@@ -485,9 +485,10 @@ class GDAL2Tiles(object):
         """Print an error message and stop the processing"""
 
         if details:
-            self.parser.error(msg + "\n\n" + details)
+            sys.stderr.write(msg+ "\n\n" + details)
         else:   
-            self.parser.error(msg)
+            sys.stderr.write(msg)
+        sys.exit(0)
         
     # -------------------------------------------------------------------------
     def progressbar(self, complete = 0.0):
@@ -518,21 +519,26 @@ class GDAL2Tiles(object):
         # Not for 'near' resampling
         # Not for Wavelet based drivers (JPEG2000, ECW, MrSID)
         # Not for 'raster' profile
-        self.scaledquery = True
+        
+        #self.scaledquery = True --- pas utilisee
+        
         # How big should be query window be for scaling down
         # Later on reset according the chosen resampling algorightm
+        
         self.querysize = 4 * self.tilesize
 
         # Should we use Read on the input file for generating overview tiles?
         # Note: Modified later by open_input()
         # Otherwise the overview tiles are generated from existing underlying tiles
-        self.overviewquery = False
+        
+        #self.overviewquery = False --- pas utilisee
         
         # RUN THE ARGUMENT PARSER:
         
-        self.optparse_init()
-        self.options, self.args = self.parser.parse_args(args=arguments)
-        if not self.args:
+        parser=self.optparse_init()
+        #self.options, self.args = parser.parse_args(args=arguments)
+        self.options, args = parser.parse_args(arguments)
+        if not args:
             self.error("No input file specified")
 
         # POSTPROCESSING OF PARSED ARGUMENTS:
@@ -548,19 +554,19 @@ class GDAL2Tiles(object):
         # Is output directory the last argument?
 
         # Test output directory, if it doesn't exist
-        if os.path.isdir(self.args[-1]) or ( len(self.args) > 1 and not os.path.exists(self.args[-1])):
-            self.output = self.args[-1]
-            self.args = self.args[:-1]
+        if os.path.isdir(args[-1]) or ( len(args) > 1 and not os.path.exists(args[-1])):
+            self.output = args[-1]
+            args = args[:-1]
 
         # More files on the input not directly supported yet
         
-        if (len(self.args) > 1):
+        if (len(args) > 1):
             self.error("Processing of several input files is not supported.",
             """Please first use a tool like gdal_vrtmerge.py or gdal_merge.py on the files:
-gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(self.args))
+gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
             # TODO: Call functions from gdal_vrtmerge.py directly
             
-        self.input = self.args[0]
+        self.input = args[0]
         
         # Default values for not given options
         
@@ -617,12 +623,12 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(self.args))
         if self.options.zoom:
             minmax = self.options.zoom.split('-',1)
             minmax.extend([''])
-            min, max = minmax[:2]
-            self.tminz = int(min)
+            min_, max_ = minmax[:2]
+            self.tminz = int(min_)
             if max:
-                self.tmaxz = int(max)
+                self.tmaxz = int(max_)
             else:
-                self.tmaxz = int(min) 
+                self.tmaxz = int(min_) 
         
         # KML generation
         self.kml = self.options.kml
@@ -693,7 +699,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(self.args))
         webviewer='all', copyright='', resampling='average', resume=False,
         googlekey='INSERT_YOUR_KEY_HERE', yahookey='INSERT_YOUR_YAHOO_APP_ID_HERE')
 
-        self.parser = p
+        return p
         
     # -------------------------------------------------------------------------
     def open_input(self):
@@ -714,22 +720,23 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(self.args))
         # Open the input file
         
         if self.input:
-            self.in_ds = gdal.Open(self.input, gdal.GA_ReadOnly)
+            #self.in_ds = gdal.Open(self.input, gdal.GA_ReadOnly)
+            in_ds = gdal.Open(self.input, gdal.GA_ReadOnly)
         else:
             raise Exception("No input file was specified")
 
         if self.options.verbose:
-            print("Input file:", "( %sP x %sL - %s bands)" % (self.in_ds.RasterXSize, self.in_ds.RasterYSize, self.in_ds.RasterCount))
+            print("Input file:", "( %sP x %sL - %s bands)" % (in_ds.RasterXSize, in_ds.RasterYSize, in_ds.RasterCount))
 
-        if not self.in_ds:
+        if not in_ds:
             # Note: GDAL prints the ERROR message too
             self.error("It is not possible to open the input file '%s'." % self.input )
             
         # Read metadata from the input file
-        if self.in_ds.RasterCount == 0:
+        if in_ds.RasterCount == 0:
             self.error( "Input file '%s' has no raster band" % self.input )
             
-        if self.in_ds.GetRasterBand(1).GetRasterColorTable():
+        if in_ds.GetRasterBand(1).GetRasterColorTable():
             # TODO: Process directly paletted dataset by generating VRT in memory
             self.error( "Please convert this file to RGB/RGBA and run gdal2tiles on the result.",
             """From paletted file you can create RGBA file (temp.vrt) by:
@@ -738,43 +745,46 @@ then run:
 gdal2tiles temp.vrt""" % self.input )
 
         # Get NODATA value
-        self.in_nodata = []
-        for i in range(1, self.in_ds.RasterCount+1):
-            if self.in_ds.GetRasterBand(i).GetNoDataValue() != None:
-                self.in_nodata.append( self.in_ds.GetRasterBand(i).GetNoDataValue() )
+        #self.in_nodata = [] --- on le remplace par in_nodata car var utilisee que dans open_input
+        in_nodata = []
+        for i in range(1, in_ds.RasterCount+1):
+            if in_ds.GetRasterBand(i).GetNoDataValue() != None:
+                in_nodata.append( in_ds.GetRasterBand(i).GetNoDataValue() )
         if self.options.srcnodata:
             nds = list(map( float, self.options.srcnodata.split(',')))
-            if len(nds) < self.in_ds.RasterCount:
-                self.in_nodata = (nds * self.in_ds.RasterCount)[:self.in_ds.RasterCount]
+            if len(nds) < in_ds.RasterCount:
+                in_nodata = (nds * in_ds.RasterCount)[:in_ds.RasterCount]
             else:
-                self.in_nodata = nds
+                in_nodata = nds
 
         if self.options.verbose:
-            print("NODATA: %s" % self.in_nodata)
+            print("NODATA: %s" % in_nodata)
 
         #
-        # Here we should have RGBA input dataset opened in self.in_ds
+        # Here we should have RGBA input dataset opened in in_ds
         #
 
         if self.options.verbose:
-            print("Preprocessed file:", "( %sP x %sL - %s bands)" % (self.in_ds.RasterXSize, self.in_ds.RasterYSize, self.in_ds.RasterCount))
+            print("Preprocessed file:", "( %sP x %sL - %s bands)" % (in_ds.RasterXSize, in_ds.RasterYSize, in_ds.RasterCount))
 
         # Spatial Reference System of the input raster
 
 
-        self.in_srs = None
+        #self.in_srs = None -- remplacee par in_srs car utilisee que dans open_input
+        in_srs=None
         
         if self.options.s_srs:
-            self.in_srs = osr.SpatialReference()
-            self.in_srs.SetFromUserInput(self.options.s_srs)
-            self.in_srs_wkt = self.in_srs.ExportToWkt()
+            in_srs = osr.SpatialReference()
+            in_srs.SetFromUserInput(self.options.s_srs)
+            #self.in_srs_wkt = in_srs.ExportToWkt() -- remplacee par in_srs_wkt car utilisee que dans open_input
+            in_srs_wkt = in_srs.ExportToWkt()
         else:
-            self.in_srs_wkt = self.in_ds.GetProjection()
-            if not self.in_srs_wkt and self.in_ds.GetGCPCount() != 0:
-                self.in_srs_wkt = self.in_ds.GetGCPProjection()
-            if self.in_srs_wkt:
-                self.in_srs = osr.SpatialReference()
-                self.in_srs.ImportFromWkt(self.in_srs_wkt)
+            in_srs_wkt = in_ds.GetProjection()
+            if not in_srs_wkt and in_ds.GetGCPCount() != 0:
+                in_srs_wkt = in_ds.GetGCPProjection()
+            if in_srs_wkt:
+                in_srs = osr.SpatialReference()
+                in_srs.ImportFromWkt(in_srs_wkt)
             #elif self.options.profile != 'raster':
             #   self.error("There is no spatial reference system info included in the input file.","You should run gdal2tiles with --s_srs EPSG:XXXX or similar.")
 
@@ -787,7 +797,7 @@ gdal2tiles temp.vrt""" % self.input )
         elif self.options.profile == 'geodetic':
             self.out_srs.ImportFromEPSG(4326)
         else:
-            self.out_srs = self.in_srs
+            self.out_srs = in_srs
         
         # Are the reference systems the same? Reproject if necessary.
 
@@ -795,16 +805,16 @@ gdal2tiles temp.vrt""" % self.input )
         
         if self.options.profile in ('mercator', 'geodetic'):
                         
-            if (self.in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (self.in_ds.GetGCPCount() == 0):
+            if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
                 self.error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.",
                 "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
                 
-            if self.in_srs:
+            if in_srs:
                 
-                if (self.in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (self.in_ds.GetGCPCount() != 0):
+                if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
                     
                     # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
-                    self.out_ds = gdal.AutoCreateWarpedVRT( self.in_ds, self.in_srs_wkt, self.out_srs.ExportToWkt() )
+                    self.out_ds = gdal.AutoCreateWarpedVRT( in_ds, in_srs_wkt, self.out_srs.ExportToWkt() )
                     
                     # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
                     
@@ -812,10 +822,10 @@ gdal2tiles temp.vrt""" % self.input )
                         print("Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')")
                         self.out_ds.GetDriver().CreateCopy("tiles.vrt", self.out_ds)
                         
-                    # Note: self.in_srs and self.in_srs_wkt contain still the non-warped reference system!!!
+                    # Note: in_srs and in_srs_wkt contain still the non-warped reference system!!!
 
                     # Correction of AutoCreateWarpedVRT for NODATA values
-                    if self.in_nodata != []:
+                    if in_nodata != []:
                         import tempfile
                         tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
                         self.out_ds.GetDriver().CreateCopy(tempfilename, self.out_ds)
@@ -826,13 +836,13 @@ gdal2tiles temp.vrt""" % self.input )
       <Option name="INIT_DEST">NO_DATA</Option>
       <Option name="UNIFIED_SRC_NODATA">YES</Option>""")
                         # replace BandMapping tag for NODATA bands....
-                        for i in range(len(self.in_nodata)):
+                        for i in range(len(in_nodata)):
                             s = s.replace("""<BandMapping src="%i" dst="%i"/>""" % ((i+1),(i+1)),"""<BandMapping src="%i" dst="%i">
           <SrcNoDataReal>%i</SrcNoDataReal>
           <SrcNoDataImag>0</SrcNoDataImag>
           <DstNoDataReal>%i</DstNoDataReal>
           <DstNoDataImag>0</DstNoDataImag>
-        </BandMapping>""" % ((i+1), (i+1), self.in_nodata[i], self.in_nodata[i])) # Or rewrite to white by: , 255 ))
+        </BandMapping>""" % ((i+1), (i+1), in_nodata[i], in_nodata[i])) # Or rewrite to white by: , 255 ))
                         # save the corrected VRT
                         open(tempfilename,"w").write(s)
                         # open by GDAL as self.out_ds
@@ -841,7 +851,7 @@ gdal2tiles temp.vrt""" % self.input )
                         os.unlink(tempfilename)
 
                         # set NODATA_VALUE metadata
-                        self.out_ds.SetMetadataItem('NODATA_VALUES','%i %i %i' % (self.in_nodata[0],self.in_nodata[1],self.in_nodata[2]))
+                        self.out_ds.SetMetadataItem('NODATA_VALUES','%i %i %i' % (in_nodata[0],in_nodata[1],in_nodata[2]))
 
                         if self.options.verbose:
                             print("Modified warping result saved into 'tiles1.vrt'")
@@ -850,7 +860,7 @@ gdal2tiles temp.vrt""" % self.input )
                     # -----------------------------------
                     # Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
                     # equivalent of gdalwarp -dstalpha
-                    if self.in_nodata == [] and self.out_ds.RasterCount in [1,3]:
+                    if in_nodata == [] and self.out_ds.RasterCount in [1,3]:
                         import tempfile
                         tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
                         self.out_ds.GetDriver().CreateCopy(tempfilename, self.out_ds)
@@ -885,7 +895,7 @@ gdal2tiles temp.vrt""" % self.input )
                 print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (self.out_ds.RasterXSize, self.out_ds.RasterYSize, self.out_ds.RasterCount))
         
         if not self.out_ds:
-            self.out_ds = self.in_ds
+            self.out_ds = in_ds
 
         #
         # Here we should have a raster (out_ds) in the correct Spatial Reference system
@@ -900,12 +910,13 @@ gdal2tiles temp.vrt""" % self.input )
             self.dataBandsCount = self.out_ds.RasterCount
 
         # KML test
-        self.isepsg4326 = False
+        #self.isepsg4326 = False : on le remplace par isepsg4326 car var utilisee uniquement dans open_input
+        isepsg4326 = False
         srs4326 = osr.SpatialReference()
         srs4326.ImportFromEPSG(4326)
         if self.out_srs and srs4326.ExportToProj4() == self.out_srs.ExportToProj4():
             self.kml = True
-            self.isepsg4326 = True
+            isepsg4326 = True
             if self.options.verbose:
                 print("KML autotest OK!")
 
@@ -1038,9 +1049,9 @@ gdal2tiles temp.vrt""" % self.input )
                 self.tminmax[tz] = (tminx, tminy, tmaxx, tmaxy)
 
             # Function which generates SWNE in LatLong for given tile
-            if self.kml and self.in_srs_wkt:
-                self.ct = osr.CoordinateTransformation(self.in_srs, srs4326)
-
+            if self.kml and in_srs_wkt:
+                #self.ct = osr.CoordinateTransformation(in_srs, srs4326) self.ct utilise que ici, changement pour ct
+                ct = osr.CoordinateTransformation(in_srs, srs4326)
                 def rastertileswne(x,y,z):
                     pixelsizex = (2**(self.tmaxz-z) * self.out_gt[1]) # X-pixel size in level
                     pixelsizey = (2**(self.tmaxz-z) * self.out_gt[1]) # Y-pixel size in level (usually -1*pixelsizex)
@@ -1048,10 +1059,10 @@ gdal2tiles temp.vrt""" % self.input )
                     east = west + self.tilesize*pixelsizex
                     south = self.ominy + y*self.tilesize*pixelsizex
                     north = south + self.tilesize*pixelsizex
-                    if not self.isepsg4326:
+                    if not isepsg4326:
                         # Transformation to EPSG:4326 (WGS84 datum)
-                        west, south = self.ct.TransformPoint(west, south)[:2]
-                        east, north = self.ct.TransformPoint(east, north)[:2]
+                        west, south = ct.TransformPoint(west, south)[:2]
+                        east, north = ct.TransformPoint(east, north)[:2]
                     return south, west, north, east
 
                 self.tileswne = rastertileswne
