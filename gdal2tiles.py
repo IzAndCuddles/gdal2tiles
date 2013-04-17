@@ -1192,6 +1192,40 @@ gdal2tiles temp.vrt""" % self.input )
                 wy = self.tilesize - wysize # 'raster' profile:
         return rx, ry, rxsize, rysize, wx, wy, wxsize, wysize, querysize
 
+
+    def generate_base_tile(self, ds, tilebands, querysize, tz, ty, tx, tilefilename, rx, ry, rxsize, rysize, wx, wy, wxsize, wysize):
+        # Tile dataset in memory
+        dstile = self.mem_drv.Create('', self.tilesize, self.tilesize, tilebands)
+        data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, self.dataBandsCount + 1)))
+        alpha = self.alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
+        if self.tilesize == querysize:
+            # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
+            dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, self.dataBandsCount + 1)))
+            dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
+        else:
+            dsquery = self.mem_drv.Create('', querysize, querysize, tilebands)
+            # TODO: fill the null value in case a tile without alpha is produced (now only png tiles are supported)
+            #for i in range(1, tilebands+1):
+            #   dsquery.GetRasterBand(1).Fill(tilenodata)
+            dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, self.dataBandsCount + 1)))
+            dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
+            self.scale_query_to_tile(dsquery, dstile, tilefilename)
+            del dsquery # Big ReadRaster query in memory scaled to the tilesize - all but 'near' algo
+        # Note: For source drivers based on WaveLet compression (JPEG2000, ECW, MrSID)
+        # the ReadRaster function returns high-quality raster (not ugly nearest neighbour)
+        # TODO: Use directly 'near' for WaveLet files
+        del data
+        if self.options.resampling != 'antialias': # Write a copy of tile to png/jpg
+            self.out_drv.CreateCopy(tilefilename, dstile, strict=0)
+        del dstile
+    # Create a KML file for this tile.
+        if self.kml:
+            kmlfilename = os.path.join(self.output, str(tz), str(tx), '%d.kml' % ty)
+            if not self.options.resume or not os.path.exists(kmlfilename):
+                f = open(kmlfilename, 'w')
+                f.write(self.generate_kml(tx, ty, tz))
+                f.close()
+
     def generate_base_tiles(self):
         """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
         
@@ -1259,46 +1293,7 @@ gdal2tiles temp.vrt""" % self.input )
                 # Query is in 'nearest neighbour' but can be bigger in then the tilesize
                 # We scale down the query to the tilesize by supplied algorithm.
 
-                # Tile dataset in memory
-                dstile = self.mem_drv.Create('', self.tilesize, self.tilesize, tilebands)
-                data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1,self.dataBandsCount+1)))
-                alpha = self.alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
-
-                if self.tilesize == querysize:
-                    # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
-                    dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1,self.dataBandsCount+1)))
-                    dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
-
-                    # Note: For source drivers based on WaveLet compression (JPEG2000, ECW, MrSID)
-                    # the ReadRaster function returns high-quality raster (not ugly nearest neighbour)
-                    # TODO: Use directly 'near' for WaveLet files
-                else:
-                    # Big ReadRaster query in memory scaled to the tilesize - all but 'near' algo
-                    dsquery = self.mem_drv.Create('', querysize, querysize, tilebands)
-                    # TODO: fill the null value in case a tile without alpha is produced (now only png tiles are supported)
-                    #for i in range(1, tilebands+1):
-                    #   dsquery.GetRasterBand(1).Fill(tilenodata)
-                    dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1,self.dataBandsCount+1)))
-                    dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
-
-                    self.scale_query_to_tile(dsquery, dstile, tilefilename)
-                    del dsquery
-
-                del data
-
-                if self.options.resampling != 'antialias':
-                    # Write a copy of tile to png/jpg
-                    self.out_drv.CreateCopy(tilefilename, dstile, strict=0)
-
-                del dstile
-
-                # Create a KML file for this tile.
-                if self.kml:
-                    kmlfilename = os.path.join(self.output, str(tz), str(tx), '%d.kml' % ty)
-                    if not self.options.resume or not os.path.exists(kmlfilename):
-                        f = open( kmlfilename, 'w')
-                        f.write( self.generate_kml( tx, ty, tz ))
-                        f.close()
+                self.generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rx, ry, rxsize, rysize, wx, wy, wxsize, wysize)
                     
                 if not self.options.verbose:
                     self.progressbar( ti / float(tcount) )
