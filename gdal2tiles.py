@@ -702,6 +702,72 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
         return p
         
     # -------------------------------------------------------------------------
+
+    def image_warping(self, in_ds, in_nodata, i, in_srs_wkt):
+        # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
+        self.out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
+    # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
+        if self.options.verbose:
+            print "Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')"
+            self.out_ds.GetDriver().CreateCopy("tiles.vrt", self.out_ds)
+    # Note: in_srs and in_srs_wkt contain still the non-warped reference system!!!
+    # Correction of AutoCreateWarpedVRT for NODATA values
+        if in_nodata != []:
+            import tempfile
+            tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
+            self.out_ds.GetDriver().CreateCopy(tempfilename, self.out_ds) # open as a text file
+            s = open(tempfilename).read() # Add the warping options
+            s = s.replace("""<GDALWarpOptions>""", """<GDALWarpOptions>
+          <Option name="INIT_DEST">NO_DATA</Option>
+          <Option name="UNIFIED_SRC_NODATA">YES</Option>""")
+            # replace BandMapping tag for NODATA bands....
+            for i in range(len(in_nodata)):
+                s = s.replace("""<BandMapping src="%i" dst="%i"/>""" % ((i + 1), (i + 1)), 
+                    """<BandMapping src="%i" dst="%i">
+              <SrcNoDataReal>%i</SrcNoDataReal>
+              <SrcNoDataImag>0</SrcNoDataImag>
+              <DstNoDataReal>%i</DstNoDataReal>
+              <DstNoDataImag>0</DstNoDataImag>
+            </BandMapping>""" % ((i + 1), (i + 1), in_nodata[i], in_nodata[i])) # Or rewrite to white by: , 255 ))
+            
+            # save the corrected VRT
+            open(tempfilename, "w").write(s) # open by GDAL as self.out_ds
+            self.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
+    # delete the temporary file
+            os.unlink(tempfilename) # set NODATA_VALUE metadata
+            self.out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (in_nodata[0], in_nodata[1], in_nodata[2]))
+            if self.options.verbose:
+                print "Modified warping result saved into 'tiles1.vrt'"
+                open("tiles1.vrt", "w").write(s)
+    # -----------------------------------
+    # Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
+    # equivalent of gdalwarp -dstalpha
+        if in_nodata == [] and self.out_ds.RasterCount in [1, 3]:
+            import tempfile
+            tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
+            self.out_ds.GetDriver().CreateCopy(tempfilename, self.out_ds) # open as a text file
+            s = open(tempfilename).read() # Add the warping options
+            s = s.replace("""<BlockXSize>""", 
+                """<VRTRasterBand dataType="Byte" band="%i" subClass="VRTWarpedRasterBand">
+        <ColorInterp>Alpha</ColorInterp>
+      </VRTRasterBand>
+      <BlockXSize>""" % (self.out_ds.RasterCount + 1))
+            s = s.replace("""</GDALWarpOptions>""", 
+                """<DstAlphaBand>%i</DstAlphaBand>
+      </GDALWarpOptions>""" % (self.out_ds.RasterCount + 1))
+            s = s.replace("""</WorkingDataType>""", """</WorkingDataType>
+        <Option name="INIT_DEST">0</Option>""")
+            # save the corrected VRT
+            open(tempfilename, "w").write(s) # open by GDAL as self.out_ds
+            self.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
+    # delete the temporary file
+            os.unlink(tempfilename)
+            if self.options.verbose:
+                print "Modified -dstalpha warping result saved into 'tiles1.vrt'"
+                open("tiles1.vrt", "w").write(s)
+        s = '''
+    '''
+
     def open_input(self):
         """Initialization of the input raster, reprojection if necessary"""
         
@@ -813,80 +879,7 @@ gdal2tiles temp.vrt""" % self.input )
                 
                 if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
                     
-                    # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
-                    self.out_ds = gdal.AutoCreateWarpedVRT( in_ds, in_srs_wkt, self.out_srs.ExportToWkt() )
-                    
-                    # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
-                    
-                    if self.options.verbose:
-                        print("Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')")
-                        self.out_ds.GetDriver().CreateCopy("tiles.vrt", self.out_ds)
-                        
-                    # Note: in_srs and in_srs_wkt contain still the non-warped reference system!!!
-
-                    # Correction of AutoCreateWarpedVRT for NODATA values
-                    if in_nodata != []:
-                        import tempfile
-                        tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
-                        self.out_ds.GetDriver().CreateCopy(tempfilename, self.out_ds)
-                        # open as a text file
-                        s = open(tempfilename).read()
-                        # Add the warping options
-                        s = s.replace("""<GDALWarpOptions>""","""<GDALWarpOptions>
-      <Option name="INIT_DEST">NO_DATA</Option>
-      <Option name="UNIFIED_SRC_NODATA">YES</Option>""")
-                        # replace BandMapping tag for NODATA bands....
-                        for i in range(len(in_nodata)):
-                            s = s.replace("""<BandMapping src="%i" dst="%i"/>""" % ((i+1),(i+1)),"""<BandMapping src="%i" dst="%i">
-          <SrcNoDataReal>%i</SrcNoDataReal>
-          <SrcNoDataImag>0</SrcNoDataImag>
-          <DstNoDataReal>%i</DstNoDataReal>
-          <DstNoDataImag>0</DstNoDataImag>
-        </BandMapping>""" % ((i+1), (i+1), in_nodata[i], in_nodata[i])) # Or rewrite to white by: , 255 ))
-                        # save the corrected VRT
-                        open(tempfilename,"w").write(s)
-                        # open by GDAL as self.out_ds
-                        self.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
-                        # delete the temporary file
-                        os.unlink(tempfilename)
-
-                        # set NODATA_VALUE metadata
-                        self.out_ds.SetMetadataItem('NODATA_VALUES','%i %i %i' % (in_nodata[0],in_nodata[1],in_nodata[2]))
-
-                        if self.options.verbose:
-                            print("Modified warping result saved into 'tiles1.vrt'")
-                            open("tiles1.vrt","w").write(s)
-
-                    # -----------------------------------
-                    # Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
-                    # equivalent of gdalwarp -dstalpha
-                    if in_nodata == [] and self.out_ds.RasterCount in [1,3]:
-                        import tempfile
-                        tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
-                        self.out_ds.GetDriver().CreateCopy(tempfilename, self.out_ds)
-                        # open as a text file
-                        s = open(tempfilename).read()
-                        # Add the warping options
-                        s = s.replace("""<BlockXSize>""","""<VRTRasterBand dataType="Byte" band="%i" subClass="VRTWarpedRasterBand">
-    <ColorInterp>Alpha</ColorInterp>
-  </VRTRasterBand>
-  <BlockXSize>""" % (self.out_ds.RasterCount + 1))
-                        s = s.replace("""</GDALWarpOptions>""", """<DstAlphaBand>%i</DstAlphaBand>
-  </GDALWarpOptions>""" % (self.out_ds.RasterCount + 1))
-                        s = s.replace("""</WorkingDataType>""", """</WorkingDataType>
-    <Option name="INIT_DEST">0</Option>""")
-                        # save the corrected VRT
-                        open(tempfilename,"w").write(s)
-                        # open by GDAL as self.out_ds
-                        self.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
-                        # delete the temporary file
-                        os.unlink(tempfilename)
-
-                        if self.options.verbose:
-                            print("Modified -dstalpha warping result saved into 'tiles1.vrt'")
-                            open("tiles1.vrt","w").write(s)
-                    s = '''
-                    '''
+                    self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
                         
             else:
                 self.error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system." )
@@ -1152,7 +1145,8 @@ gdal2tiles temp.vrt""" % self.input )
     # -------------------------------------------------------------------------
 
     def tile_bounds(self, tmaxx, tmaxy, ds, querysize, tz, ty, tx):
-        if self.options.profile == 'mercator': # Tile bounds in EPSG:900913
+        if self.options.profile == 'mercator':
+            # Tile bounds in EPSG:900913
             b = self.mercator.TileBounds(tx, ty, tz)
         elif self.options.profile == 'geodetic':
             b = self.geodetic.TileBounds(tx, ty, tz)
@@ -1225,6 +1219,7 @@ gdal2tiles temp.vrt""" % self.input )
                 f = open(kmlfilename, 'w')
                 f.write(self.generate_kml(tx, ty, tz))
                 f.close()
+
 
     def generate_base_tiles(self):
         """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
