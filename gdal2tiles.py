@@ -1150,6 +1150,48 @@ gdal2tiles temp.vrt""" % self.input )
                     f.close()
         
     # -------------------------------------------------------------------------
+
+    def tile_bounds(self, tmaxx, tmaxy, ds, querysize, tz, ty, tx):
+        if self.options.profile == 'mercator': # Tile bounds in EPSG:900913
+            b = self.mercator.TileBounds(tx, ty, tz)
+        elif self.options.profile == 'geodetic':
+            b = self.geodetic.TileBounds(tx, ty, tz)
+    #print "\tgdalwarp -ts 256 256 -te %s %s %s %s %s %s_%s_%s.tif" % ( b[0], b[1], b[2], b[3], "tiles.vrt", tz, tx, ty)
+    # Don't scale up by nearest neighbour, better change the querysize
+    # to the native resolution (and return smaller query tile) for scaling
+        if self.options.profile in ('mercator', 'geodetic'):
+            rb, wb = self.geo_query(ds, b[0], b[3], b[2], b[1])
+            nativesize = wb[0] + wb[2] # Pixel size in the raster covering query geo extent
+            if self.options.verbose:
+                print "\tNative Extent (querysize", nativesize, "): ", rb, wb
+            # Tile bounds in raster coordinates for ReadRaster query
+            rb, wb = self.geo_query(ds, b[0], b[3], b[2], b[1], querysize=querysize)
+            rx, ry, rxsize, rysize = rb
+            wx, wy, wxsize, wysize = wb
+        else:
+            tsize = int(self.tsize[tz]) # tilesize in raster coordinates for actual zoom
+            xsize = self.out_ds.RasterXSize # size of the raster in pixels
+            ysize = self.out_ds.RasterYSize
+            if tz >= self.nativezoom:
+                querysize = self.tilesize # int(2**(self.nativezoom-tz) * self.tilesize)
+            rx = (tx) * tsize
+            rxsize = 0
+            if tx == tmaxx:
+                rxsize = xsize % tsize
+            if rxsize == 0:
+                rxsize = tsize
+            rysize = 0
+            if ty == tmaxy:
+                rysize = ysize % tsize
+            if rysize == 0:
+                rysize = tsize
+            ry = ysize - (ty * tsize) - rysize
+            wx, wy = 0, 0
+            wxsize, wysize = int(rxsize / float(tsize) * self.tilesize), int(rysize / float(tsize) * self.tilesize)
+            if wysize != self.tilesize:
+                wy = self.tilesize - wysize # 'raster' profile:
+        return rx, ry, rxsize, rysize, wx, wy, wxsize, wysize, querysize
+
     def generate_base_tiles(self):
         """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
         
@@ -1209,55 +1251,7 @@ gdal2tiles temp.vrt""" % self.input )
                 if not os.path.exists(os.path.dirname(tilefilename)):
                     os.makedirs(os.path.dirname(tilefilename))
 
-                if self.options.profile == 'mercator':
-                    # Tile bounds in EPSG:900913
-                    b = self.mercator.TileBounds(tx, ty, tz)
-                elif self.options.profile == 'geodetic':
-                    b = self.geodetic.TileBounds(tx, ty, tz)
-
-                #print "\tgdalwarp -ts 256 256 -te %s %s %s %s %s %s_%s_%s.tif" % ( b[0], b[1], b[2], b[3], "tiles.vrt", tz, tx, ty)
-
-                # Don't scale up by nearest neighbour, better change the querysize
-                # to the native resolution (and return smaller query tile) for scaling
-
-                if self.options.profile in ('mercator','geodetic'):
-                    rb, wb = self.geo_query( ds, b[0], b[3], b[2], b[1])
-                    nativesize = wb[0]+wb[2] # Pixel size in the raster covering query geo extent
-                    if self.options.verbose:
-                        print("\tNative Extent (querysize",nativesize,"): ", rb, wb)
-
-                    # Tile bounds in raster coordinates for ReadRaster query
-                    rb, wb = self.geo_query( ds, b[0], b[3], b[2], b[1], querysize=querysize)
-
-                    rx, ry, rxsize, rysize = rb
-                    wx, wy, wxsize, wysize = wb
-                                            
-                else: # 'raster' profile:
-                    
-                    tsize = int(self.tsize[tz]) # tilesize in raster coordinates for actual zoom
-                    xsize = self.out_ds.RasterXSize # size of the raster in pixels
-                    ysize = self.out_ds.RasterYSize
-                    if tz >= self.nativezoom:
-                        querysize = self.tilesize # int(2**(self.nativezoom-tz) * self.tilesize)
-                    
-                    rx = (tx) * tsize
-                    rxsize = 0
-                    if tx == tmaxx:
-                        rxsize = xsize % tsize
-                    if rxsize == 0:
-                        rxsize = tsize
-                    
-                    rysize = 0
-                    if ty == tmaxy:
-                        rysize = ysize % tsize
-                    if rysize == 0:
-                        rysize = tsize
-                    ry = ysize - (ty * tsize) - rysize
-
-                    wx, wy = 0, 0
-                    wxsize, wysize = int(rxsize/float(tsize) * self.tilesize), int(rysize/float(tsize) * self.tilesize)
-                    if wysize != self.tilesize:
-                        wy = self.tilesize - wysize
+                rx, ry, rxsize, rysize, wx, wy, wxsize, wysize, querysize = self.tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx)
                     
                 if self.options.verbose:
                     print("\tReadRaster Extent: ", (rx, ry, rxsize, rysize), (wx, wy, wxsize, wysize))
