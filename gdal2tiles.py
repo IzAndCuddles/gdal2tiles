@@ -449,6 +449,33 @@ class GDAL2Tiles(object):
         self.stopped = True
 
     # -------------------------------------------------------------------------
+
+    def init_resampling(self):
+        if self.options.resampling == 'average':
+            try:
+                if gdal.RegenerateOverview:
+                    pass
+            except:
+                self.error("'average' resampling algorithm is not available.", "Please use -r 'near' argument or upgrade to newer version of GDAL.")
+        elif self.options.resampling == 'antialias':
+            try:
+                if numpy:
+                    pass
+            except:
+                self.error("'antialias' resampling algorithm is not available.", "Install PIL (Python Imaging Library) and numpy.")
+        elif self.options.resampling == 'near':
+            self.resampling = gdal.GRA_NearestNeighbour
+            self.querysize = self.tilesize
+        elif self.options.resampling == 'bilinear':
+            self.resampling = gdal.GRA_Bilinear
+            self.querysize = self.tilesize * 2
+        elif self.options.resampling == 'cubic':
+            self.resampling = gdal.GRA_Cubic
+        elif self.options.resampling == 'cubicspline':
+            self.resampling = gdal.GRA_CubicSpline
+        elif self.options.resampling == 'lanczos':
+            self.resampling = gdal.GRA_Lanczos
+
     def __init__(self, arguments ):
         """Constructor function - initialization"""
         
@@ -533,36 +560,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
 
         self.resampling = None
         
-        if self.options.resampling == 'average':
-            try:
-                if gdal.RegenerateOverview:
-                    pass
-            except:
-                self.error("'average' resampling algorithm is not available.", "Please use -r 'near' argument or upgrade to newer version of GDAL.")
-        
-        elif self.options.resampling == 'antialias':
-            try:
-                if numpy:
-                    pass
-            except:
-                self.error("'antialias' resampling algorithm is not available.", "Install PIL (Python Imaging Library) and numpy.")
-        
-        elif self.options.resampling == 'near':
-            self.resampling = gdal.GRA_NearestNeighbour
-            self.querysize = self.tilesize
-            
-        elif self.options.resampling == 'bilinear':
-            self.resampling = gdal.GRA_Bilinear
-            self.querysize = self.tilesize * 2
-
-        elif self.options.resampling == 'cubic':
-            self.resampling = gdal.GRA_Cubic
-
-        elif self.options.resampling == 'cubicspline':
-            self.resampling = gdal.GRA_CubicSpline
-
-        elif self.options.resampling == 'lanczos':
-            self.resampling = gdal.GRA_Lanczos
+        self.init_resampling()
         
         # User specified zoom levels
         self.tminz = None
