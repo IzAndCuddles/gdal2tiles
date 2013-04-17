@@ -98,8 +98,6 @@ I would like to know where it was used.
 Class is available under the open-source GDAL license (www.gdal.org).
 """
 
-import math
-
 MAXZOOMLEVEL = 32
 
 class GlobalMercator(object):
@@ -833,7 +831,39 @@ gdal2tiles temp.vrt""" % self.input )
         s = '''
     '''
 
+    def tile_range(self,in_srs,in_srs_wkt,srs4326,isepsg4326):
+        self.nativezoom = None
+        self.geodetic = None
+        self.mercator = None
+        self.tsize= None
+        if self.options.profile == 'mercator':
+            self.tile_range_mercator()
+        if self.options.profile == 'geodetic':
+            self.tile_range_geodetic()
+        if self.options.profile == 'raster':
+            self.tile_range_raster()
+            # Function which generates SWNE in LatLong for given tile
+            if self.kml and in_srs_wkt:
+                #self.ct = osr.CoordinateTransformation(in_srs, srs4326) self.ct utilise que ici, changement pour ct
+                ct = osr.CoordinateTransformation(in_srs, srs4326)
+                def rastertileswne(x,y,z):
+                    pixelsizex = (2**(self.tmaxz-z) * self.out_gt[1]) # X-pixel size in level
+                    pixelsizey = (2**(self.tmaxz-z) * self.out_gt[1]) # Y-pixel size in level (usually -1*pixelsizex)
+                    west = self.out_gt[0] + x*self.tilesize*pixelsizex
+                    east = west + self.tilesize*pixelsizex
+                    south = self.ominy + y*self.tilesize*pixelsizex
+                    north = south + self.tilesize*pixelsizex
+                    if not isepsg4326:
+                        # Transformation to EPSG:4326 (WGS84 datum)
+                        west, south = ct.TransformPoint(west, south)[:2]
+                        east, north = ct.TransformPoint(east, north)[:2]
+                    return south, west, north, east
 
+                self.tileswne = rastertileswne
+            else:
+                self.tileswne = lambda x, y, z: (0,0,0,0)
+        
+    
     def tile_range_raster(self, tz, tminx, tminy, tmaxx, tmaxy):
         log2 = lambda x:math.log10(x) / math.log10(2) # log2 (base 2 logarithm)
         self.nativezoom = int(max(math.ceil(log2(self.out_ds.RasterXSize / float(self.tilesize))), math.ceil(log2(self.out_ds.RasterYSize / float(self.tilesize)))))
@@ -909,39 +939,7 @@ gdal2tiles temp.vrt""" % self.input )
 
 
 
-    def tile_range(self,in_srs,in_srs_wkt,srs4326,isepsg4326):
-        self.nativezoom = None
-        self.geodetic = None
-        self.mercator = None
-        self.tsize= None
-        if self.options.profile == 'mercator':
-            self.tile_range_mercator()
-        if self.options.profile == 'geodetic':
-            self.tile_range_geodetic()
-        if self.options.profile == 'raster':
-            self.tile_range_raster()
-            # Function which generates SWNE in LatLong for given tile
-            if self.kml and in_srs_wkt:
-                #self.ct = osr.CoordinateTransformation(in_srs, srs4326) self.ct utilise que ici, changement pour ct
-                ct = osr.CoordinateTransformation(in_srs, srs4326)
-                def rastertileswne(x,y,z):
-                    pixelsizex = (2**(self.tmaxz-z) * self.out_gt[1]) # X-pixel size in level
-                    pixelsizey = (2**(self.tmaxz-z) * self.out_gt[1]) # Y-pixel size in level (usually -1*pixelsizex)
-                    west = self.out_gt[0] + x*self.tilesize*pixelsizex
-                    east = west + self.tilesize*pixelsizex
-                    south = self.ominy + y*self.tilesize*pixelsizex
-                    north = south + self.tilesize*pixelsizex
-                    if not isepsg4326:
-                        # Transformation to EPSG:4326 (WGS84 datum)
-                        west, south = ct.TransformPoint(west, south)[:2]
-                        east, north = ct.TransformPoint(east, north)[:2]
-                    return south, west, north, east
 
-                self.tileswne = rastertileswne
-            else:
-                self.tileswne = lambda x, y, z: (0,0,0,0)
-        
-    
 
 
 
@@ -1941,12 +1939,14 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rx, r
         dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, dataBandsCount + 1)))
         dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
         scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
-        del dsquery # Big ReadRaster query in memory scaled to the tilesize - all but 'near' algo
+        del dsquery
+    # Big ReadRaster query in memory scaled to the tilesize - all but 'near' algo
     # Note: For source drivers based on WaveLet compression (JPEG2000, ECW, MrSID)
     # the ReadRaster function returns high-quality raster (not ugly nearest neighbour)
     # TODO: Use directly 'near' for WaveLet files
     del data
-    if options.resampling != 'antialias': # Write a copy of tile to png/jpg
+    if options.resampling != 'antialias':
+        # Write a copy of tile to png/jpg
         out_drv.CreateCopy(tilefilename, dstile, strict=0)
     del dstile
 # Create a KML file for this tile.
