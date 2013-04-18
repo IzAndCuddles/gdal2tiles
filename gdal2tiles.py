@@ -1743,83 +1743,83 @@ def generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt):
     return s
 
 
-def generate_metadata(options,output,kml,tileext,tminmax,tminz,tmaxz,nativezoom,ominx,ominy,omaxx,omaxy,mercator,tileswne,out_srs,out_gt):
+def generate_metadata(config,profile,tile,out_data):
     """Generation of main metadata files and HTML viewers (metadata related to particular tiles are generated during the tile processing)."""
     
-    if not os.path.exists(output):
-        os.makedirs(output)
+    if not os.path.exists(config.output):
+        os.makedirs(config.output)
 
-    if options.profile == 'mercator':
+    if config.options.profile == 'mercator':
         
-        south, west = mercator.MetersToLatLon( ominx, ominy)
-        north, east = mercator.MetersToLatLon( omaxx, omaxy)
+        south, west = profile.mercator.MetersToLatLon( tile.ominx, tile.ominy)
+        north, east = profile.mercator.MetersToLatLon(tile.omaxx, tile.omaxy)
         south, west = max(-85.05112878, south), max(-180.0, west)
         north, east = min(85.05112878, north), min(180.0, east)
         swne = (south, west, north, east)
 
         # Generate googlemaps.html
-        if options.webviewer in ('all','google') and options.profile == 'mercator':
-            if not options.resume or not os.path.exists(os.path.join(output, 'googlemaps.html')):
-                f = open(os.path.join(output, 'googlemaps.html'), 'w')
-                f.write( generate_googlemaps(options,swne,tminz,tmaxz,tileext,kml) )
+        if config.options.webviewer in ('all','google') and config.options.profile == 'mercator':
+            if not config.options.resume or not os.path.exists(os.path.join(config.output, 'googlemaps.html')):
+                f = open(os.path.join(config.output, 'googlemaps.html'), 'w')
+                f.write( generate_googlemaps(config.options,swne,tile.tminz,tile.tmaxz,config.tileext,config.kml) )
                 f.close()
 
         # Generate openlayers.html
-        if options.webviewer in ('all','openlayers'):
-            if not options.resume or not os.path.exists(os.path.join(output, 'openlayers.html')):
-                f = open(os.path.join(output, 'openlayers.html'), 'w')
-                f.write( generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt) )
+        if config.options.webviewer in ('all','openlayers'):
+            if not config.options.resume or not os.path.exists(os.path.join(config.output, 'openlayers.html')):
+                f = open(os.path.join(config.output, 'openlayers.html'), 'w')
+                f.write( generate_openlayers(config.options,swne,tile.tminz,tile.tmaxz,config.tileext,tile.nativezoom,out_data.out_gt) )
                 f.close()
 
-    elif options.profile == 'geodetic':
+    elif config.options.profile == 'geodetic':
         
-        west, south = ominx, ominy
-        east, north = omaxx, omaxy
+        west, south = tile.ominx, tile.ominy
+        east, north = tile.omaxx, tile.omaxy
         south, west = max(-90.0, south), max(-180.0, west)
         north, east = min(90.0, north), min(180.0, east)
         swne = (south, west, north, east)
         
         # Generate openlayers.html
-        if options.webviewer in ('all','openlayers'):
-            if not options.resume or not os.path.exists(os.path.join(output, 'openlayers.html')):
-                f = open(os.path.join(output, 'openlayers.html'), 'w')
-                f.write( generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt) )
+        if config.options.webviewer in ('all','openlayers'):
+            if not config.options.resume or not os.path.exists(os.path.join(config.output, 'openlayers.html')):
+                f = open(os.path.join(config.output, 'openlayers.html'), 'w')
+                f.write( generate_openlayers(config.options,swne,tile.tminz,tile.tmaxz,config.tileext,tile.nativezoom,out_data.out_gt) )
                 f.close()           
 
-    elif options.profile == 'raster':
+    elif config.options.profile == 'raster':
         
-        west, south = ominx, ominy
-        east, north = omaxx, omaxy
+        west, south = tile.ominx, tile.ominy
+        east, north = tile.omaxx, tile.omaxy
 
         swne = (south, west, north, east)
         
         # Generate openlayers.html
-        if options.webviewer in ('all','openlayers'):
-            if not options.resume or not os.path.exists(os.path.join(output, 'openlayers.html')):
-                f = open(os.path.join(output, 'openlayers.html'), 'w')
-                f.write( generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt) )
+        if config.options.webviewer in ('all','openlayers'):
+            if not config.options.resume or not os.path.exists(os.path.join(config.output, 'openlayers.html')):
+                f = open(os.path.join(config.output, 'openlayers.html'), 'w')
+                f.write( generate_openlayers(config.options,swne,tile.tminz,tile.tmaxz,config.tileext,tile.nativezoom,out_data.out_gt) )
                 f.close()           
 
 
     # Generate tilemapresource.xml.
-    if not options.resume or not os.path.exists(os.path.join(output, 'tilemapresource.xml')):
-        f = open(os.path.join(output, 'tilemapresource.xml'), 'w')
-        f.write( generate_tilemapresource(options,swne,tileext,out_srs,tminz,tmaxz,nativezoom,out_gt))
+    if not config.options.resume or not os.path.exists(os.path.join(config.output, 'tilemapresource.xml')):
+        f = open(os.path.join(config.output, 'tilemapresource.xml'), 'w')
+        f.write( generate_tilemapresource(config.options,swne,config.tileext,config.out_srs,tile.tminz,tile.tmaxz,tile.nativezoom,out_data.out_gt))
         f.close()
 
-    if kml:
+    if config.kml:
         # TODO: Maybe problem for not automatically generated tminz
         # The root KML should contain links to all tiles in the tminz level
         children = []
-        xmin, ymin, xmax, ymax = tminmax[tminz]
+        xmin, ymin, xmax, ymax = tile.tminmax[tile.tminz]
         for x in range(xmin, xmax+1):
             for y in range(ymin, ymax+1):
-                children.append( [ x, y, tminz ] ) 
+                children.append( [ x, y, tile.tminz ] ) 
         # Generate Root KML
-        if kml:
-            if not options.resume or not os.path.exists(os.path.join(output, 'doc.kml')):
-                f = open(os.path.join(output, 'doc.kml'), 'w')
-                f.write( generate_kml(tileext,options,tileswne, None, None, None, children) )
+        if config.kml:
+            if not config.options.resume or not os.path.exists(os.path.join(config.output, 'doc.kml')):
+                f = open(os.path.join(config.output, 'doc.kml'), 'w')
+                f.write( generate_kml(config.tileext,config.options,profile.tileswne, None, None, None, children) )
                 f.close()
 
 
@@ -2145,15 +2145,11 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
 
 
 
-def process(config):
+def process(config,profile,out_data,tile):
     """The main processing function, runs all the main steps of processing"""
     
-    profile=Profile()
-    out_data=OutData()
-    tile=Tile()
-    
     # Opening and preprocessing of the input file
-    config.open_input()
+    config.open_input(profile,tile,out_data)
     
     # Generation of main metadata files and HTML viewers
     generate_metadata(config,profile,tile,out_data)
@@ -2173,5 +2169,8 @@ def process(config):
 if __name__=='__main__':
     argv = gdal.GeneralCmdLineProcessor( sys.argv )
     if argv:
-        c1 = Configuration(argv[1:])
-        process(c1)
+        profile=Profile()
+        out_data=OutData()
+        tile=Tile()
+        c1 = Configuration(argv[1:],tile)
+        process(c1,profile,out_data,tile)
