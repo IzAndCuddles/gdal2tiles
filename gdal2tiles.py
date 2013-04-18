@@ -800,17 +800,18 @@ gdal2tiles temp.vrt""" % self.input )
         
     def image_warping(self, in_ds, in_nodata, i, in_srs_wkt):
         # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
-        self.out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
+        out_data = OutData()
+        out_data.out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
     # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
         if self.options.verbose:
             print "Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')"
-            self.out_ds.GetDriver().CreateCopy("tiles.vrt", self.out_ds)
+            out_data.out_ds.GetDriver().CreateCopy("tiles.vrt", out_data.out_ds)
     # Note: in_srs and in_srs_wkt contain still the non-warped reference system!!!
     # Correction of AutoCreateWarpedVRT for NODATA values
         if in_nodata != []:
             import tempfile
             tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
-            self.out_ds.GetDriver().CreateCopy(tempfilename, self.out_ds) # open as a text file
+            out_data.out_ds.GetDriver().CreateCopy(tempfilename, out_data.out_ds) # open as a text file
             s = open(tempfilename).read() # Add the warping options
             s = s.replace("""<GDALWarpOptions>""", """<GDALWarpOptions>
           <Option name="INIT_DEST">NO_DATA</Option>
@@ -826,35 +827,35 @@ gdal2tiles temp.vrt""" % self.input )
             </BandMapping>""" % ((i + 1), (i + 1), in_nodata[i], in_nodata[i])) # Or rewrite to white by: , 255 ))
             
             # save the corrected VRT
-            open(tempfilename, "w").write(s) # open by GDAL as self.out_ds
-            self.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
+            open(tempfilename, "w").write(s) # open by GDAL as out_data.out_ds
+            out_data.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
     # delete the temporary file
             os.unlink(tempfilename) # set NODATA_VALUE metadata
-            self.out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (in_nodata[0], in_nodata[1], in_nodata[2]))
+            out_data.out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (in_nodata[0], in_nodata[1], in_nodata[2]))
             if self.options.verbose:
                 print "Modified warping result saved into 'tiles1.vrt'"
                 open("tiles1.vrt", "w").write(s)
 
     # Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
     # equivalent of gdalwarp -dstalpha
-        if in_nodata == [] and self.out_ds.RasterCount in [1, 3]:
+        if in_nodata == [] and out_data.out_ds.RasterCount in [1, 3]:
             import tempfile
             tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
-            self.out_ds.GetDriver().CreateCopy(tempfilename, self.out_ds) # open as a text file
+            out_data.out_ds.GetDriver().CreateCopy(tempfilename, out_data.out_ds) # open as a text file
             s = open(tempfilename).read() # Add the warping options
             s = s.replace("""<BlockXSize>""", 
                 """<VRTRasterBand dataType="Byte" band="%i" subClass="VRTWarpedRasterBand">
         <ColorInterp>Alpha</ColorInterp>
       </VRTRasterBand>
-      <BlockXSize>""" % (self.out_ds.RasterCount + 1))
+      <BlockXSize>""" % (out_data.out_ds.RasterCount + 1))
             s = s.replace("""</GDALWarpOptions>""", 
                 """<DstAlphaBand>%i</DstAlphaBand>
-      </GDALWarpOptions>""" % (self.out_ds.RasterCount + 1))
+      </GDALWarpOptions>""" % (out_data.out_ds.RasterCount + 1))
             s = s.replace("""</WorkingDataType>""", """</WorkingDataType>
         <Option name="INIT_DEST">0</Option>""")
             # save the corrected VRT
-            open(tempfilename, "w").write(s) # open by GDAL as self.out_ds
-            self.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
+            open(tempfilename, "w").write(s) # open by GDAL as out_data.out_ds
+            out_data.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
     # delete the temporary file
             os.unlink(tempfilename)
             if self.options.verbose:
