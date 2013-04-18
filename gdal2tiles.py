@@ -435,7 +435,7 @@ class OutData(object):
     def __init__(self):
         self.out_ds=None
         self.alphaband=None
-        self.dataBandCount=None
+        self.dataBandsCount=None
         self.out_gt=None
 
 
@@ -739,9 +739,9 @@ gdal2tiles temp.vrt""" % self.input )
         out_data.alphaband = out_data.out_ds.GetRasterBand(1).GetMaskBand()
         if (out_data.alphaband.GetMaskFlags() & gdal.GMF_ALPHA) or out_data.out_ds.RasterCount==4 or out_data.out_ds.RasterCount==2:
             # TODO: Better test for alpha band in the dataset
-            self.dataBandsCount = out_data.out_ds.RasterCount - 1
+            out_data.dataBandsCount = out_data.out_ds.RasterCount - 1
         else:
-            self.dataBandsCount = out_data.out_ds.RasterCount
+            out_data.dataBandsCount = out_data.out_ds.RasterCount
 
         # KML test
         #self.isepsg4326 = False : on le remplace par isepsg4326 car var utilisee uniquement dans open_input
@@ -790,7 +790,6 @@ gdal2tiles temp.vrt""" % self.input )
         #
         # Calculating ranges for tiles in different zoom levels
         #
-        tile = Tile()
         self.tile_range(out_data,profile,tile,in_srs,in_srs_wkt,srs4326,isepsg4326)
         
         
@@ -1953,7 +1952,7 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
     wx, wy, wxsize, wysize = wb
     dstile = config.mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
     data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, out_data.dataBandsCount + 1)))
-    alpha = config.alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
+    alpha = out_data.alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
     if TILESIZE == querysize:
         # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
         dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
