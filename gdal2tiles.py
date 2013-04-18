@@ -410,6 +410,23 @@ class GlobalGeodetic(object):
 
 
 
+
+
+class Profile(object):
+    
+    def __init__(self):
+        self.mercator=GlobalMercator()
+        self.geodetic=GlobalGeodetic()
+        self.tileswne=None
+
+class Tile(object):
+    
+    def __init__(self):
+        self.tminz=None
+        self.tmaxz=None
+        
+
+
 class Configuration (object):
 
     def __init__(self,arguments):
