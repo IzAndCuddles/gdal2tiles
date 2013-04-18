@@ -1922,8 +1922,10 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
         wb = (wx,wy,wxsize,wysize)
     return rb, wb, querysize
 
-def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rx, ry, rxsize, rysize, wx, wy, wxsize, wysize, mem_drv,tilesize,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling):
+def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, mem_drv,tilesize,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling):
     # Tile dataset in memory
+    rx, ry, rxsize, rysize = rb
+    wx, wy, wxsize, wysize = wb
     dstile = mem_drv.Create('', tilesize, tilesize, tilebands)
     data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, dataBandsCount + 1)))
     alpha = alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
@@ -2016,16 +2018,14 @@ def generate_base_tiles(mem_drv,tilesize,dataBandsCount,alphaband,options,out_dr
                 os.makedirs(os.path.dirname(tilefilename))
 
             rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom,tilesize)
-                
-            rx, ry, rxsize, rysize = rb
-            wx, wy, wxsize, wysize = wb
+
             if options.verbose:
-                print("\tReadRaster Extent: ", (rx, ry, rxsize, rysize), (wx, wy, wxsize, wysize))
+                print("\tReadRaster Extent: ", rb, wb)
                 
             # Query is in 'nearest neighbour' but can be bigger in then the tilesize
             # We scale down the query to the tilesize by supplied algorithm.
 
-            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rx, ry, rxsize, rysize, wx, wy, wxsize, wysize, mem_drv,tilesize,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling)
+            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, mem_drv,tilesize,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling)
                 
             if not options.verbose:
                 progressbar( ti / float(tcount) )
