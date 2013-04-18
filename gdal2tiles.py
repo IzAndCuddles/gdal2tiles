@@ -1949,51 +1949,51 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
         wb = (wx,wy,wxsize,wysize)
     return rb, wb, querysize
 
-def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, mem_drv,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling):
+def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config,profile,out_data,tile):
     # Tile dataset in memory
     rx, ry, rxsize, rysize = rb
     wx, wy, wxsize, wysize = wb
-    dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
-    data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, dataBandsCount + 1)))
-    alpha = alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
+    dstile = config.mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
+    data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, out_data.dataBandsCount + 1)))
+    alpha = config.alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
     if TILESIZE == querysize:
         # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
-        dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, dataBandsCount + 1)))
+        dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
         dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
     else:
-        dsquery = mem_drv.Create('', querysize, querysize, tilebands)
+        dsquery = config.mem_drv.Create('', querysize, querysize, tilebands)
         # TODO: fill the null value in case a tile without alpha is produced (now only png tiles are supported)
         #for i in range(1, tilebands+1):
         #   dsquery.GetRasterBand(1).Fill(tilenodata)
-        dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, dataBandsCount + 1)))
+        dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
         dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
-        scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
+        scale_query_to_tile(config.options,config.tiledriver,config.resampling,dsquery, dstile, tilefilename)
         del dsquery
     # Big ReadRaster query in memory scaled to the tilesize - all but 'near' algo
     # Note: For source drivers based on WaveLet compression (JPEG2000, ECW, MrSID)
     # the ReadRaster function returns high-quality raster (not ugly nearest neighbour)
     # TODO: Use directly 'near' for WaveLet files
     del data
-    if options.resampling != 'antialias':
+    if config.options.resampling != 'antialias':
         # Write a copy of tile to png/jpg
-        out_drv.CreateCopy(tilefilename, dstile, strict=0)
+        config.out_drv.CreateCopy(tilefilename, dstile, strict=0)
     del dstile
 # Create a KML file for this tile.
-    if kml:
-        kmlfilename = os.path.join(output, str(tz), str(tx), '%d.kml' % ty)
-        if not options.resume or not os.path.exists(kmlfilename):
+    if config.kml:
+        kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
+        if not config.options.resume or not os.path.exists(kmlfilename):
             f = open(kmlfilename, 'w')
-            f.write(generate_kml(tileext,TILESIZE,options,tileswne,tx, ty, tz))
+            f.write(generate_kml(config.tileext,TILESIZE,config.options,config.tileswne,tx, ty, tz))
             f.close()
 
 
 
-def generate_base_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,querysize_c,resampling,kml,tminmax,tmaxz,tsize,nativezoom,out_ds,dataBandsCount,alphaband,tileswne,mercator,geodetic,stopped):
+def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,tiledriver,options,output,querysize_c,resampling,kml,tminmax,tmaxz,tsize,nativezoom,out_ds,dataBandsCount,alphaband,tileswne,mercator,geodetic,stopped):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
     
     print("Generating Base Tiles:")
     
-    if options.verbose:
+    if config.options.verbose:
         print('')
         print("Tiles generated from the max zoom level:")
         print("----------------------------------------")
@@ -2001,7 +2001,7 @@ def generate_base_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,querys
 
 
     # Set the bounds
-    tminx, tminy, tmaxx, tmaxy = tminmax[tmaxz]
+    tminx, tminy, tmaxx, tmaxy = tile.tminmax[tile.tmaxz]
 
     # Just the center tile
     #tminx = tminx+ (tmaxx - tminx)/2
@@ -2009,12 +2009,12 @@ def generate_base_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,querys
     #tmaxx = tminx
     #tmaxy = tminy
     
-    ds = out_ds
-    tilebands = dataBandsCount + 1
-    querysize = querysize_c
+    ds = out_data.out_ds
+    tilebands = out_data.dataBandsCount + 1
+    querysize = config.querysize_c
     
-    if options.verbose:
-        print("dataBandsCount: ", dataBandsCount)
+    if config.options.verbose:
+        print("dataBandsCount: ", out_data.dataBandsCount)
         print("tilebands: ", tilebands)
     
     #print tminx, tminy, tmaxx, tmaxy
@@ -2022,19 +2022,19 @@ def generate_base_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,querys
     #print tcount
     ti = 0
     
-    tz = tmaxz
+    tz = tile.tmaxz
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
         for tx in range(tminx, tmaxx+1):
 
-            if stopped:
+            if config.stopped:
                 break
             ti += 1
-            tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
-            if options.verbose:
+            tilefilename = os.path.join(config.output, str(tz), str(tx), "%s.%s" % (ty, config.tileext))
+            if config.options.verbose:
                 print(ti,'/',tcount, tilefilename) #, "( TileMapService: z / x / y )"
 
-            if options.resume and os.path.exists(tilefilename):
-                if options.verbose:
+            if config.options.resume and os.path.exists(tilefilename):
+                if config.options.verbose:
                     print("Tile generation skiped because of --resume")
                 else:
                     progressbar( ti / float(tcount) )
@@ -2044,35 +2044,35 @@ def generate_base_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,querys
             if not os.path.exists(os.path.dirname(tilefilename)):
                 os.makedirs(os.path.dirname(tilefilename))
 
-            rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom)
+            rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,config.options,profile.mercator,profile.geodetic,tile.tsize,tile.nativezoom,out_data.out_ds)
 
-            if options.verbose:
+            if config.options.verbose:
                 print("\tReadRaster Extent: ", rb, wb)
                 
             # Query is in 'nearest neighbour' but can be bigger in then the tilesize
             # We scale down the query to the tilesize by supplied algorithm.
 
-            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, mem_drv,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling)
+            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config,profile,out_data,tile)
                 
-            if not options.verbose:
+            if not config.options.verbose:
                 progressbar( ti / float(tcount) )
 
 
 
-def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tminmax,output,tileext,options,tiledriver,resampling,out_drv,kml,tileswne):
-    dsquery = mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands) # TODO: fill the null value
+def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,config,tile,profile):
+    dsquery = config.mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands) # TODO: fill the null value
     #for i in range(1, tilebands+1):
     #   dsquery.GetRasterBand(1).Fill(tilenodata)
-    dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands) # TODO: Implement more clever walking on the tiles with cache functionality
+    dstile = config.mem_drv.Create('', TILESIZE, TILESIZE, tilebands) # TODO: Implement more clever walking on the tiles with cache functionality
     # probably walk should start with reading of four tiles from top left corner
     # Hilbert curve...
     children = []
 # Read the tiles and write them to query window
     for y in range(2 * ty, 2 * ty + 2):
         for x in range(2 * tx, 2 * tx + 2):
-            minx, miny, maxx, maxy = tminmax[tz + 1]
+            minx, miny, maxx, maxy = tile.tminmax[tz + 1]
             if x >= minx and x <= maxx and y >= miny and y <= maxy:
-                dsquerytile = gdal.Open(os.path.join(output, str(tz + 1), str(x), "%s.%s" % (y, tileext)), gdal.GA_ReadOnly)
+                dsquerytile = gdal.Open(os.path.join(config.output, str(tz + 1), str(x), "%s.%s" % (y, config.tileext)), gdal.GA_ReadOnly)
                 if (ty == 0 and y == 1) or (ty != 0 and (y % (2 * ty)) != 0):
                     tileposy = 0
                 else:
@@ -2086,52 +2086,52 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tminmax,o
                 dsquery.WriteRaster(tileposx, tileposy, TILESIZE, TILESIZE, dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE), band_list=list(range(1, tilebands + 1)))
                 children.append([x, y, tz + 1])
     
-    scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
+    scale_query_to_tile(config.options,config.tiledriver,config.resampling,dsquery, dstile, tilefilename)
     # Write a copy of tile to png/jpg
-    if options.resampling != 'antialias':
+    if config.options.resampling != 'antialias':
         # Write a copy of tile to png/jpg
-        out_drv.CreateCopy(tilefilename, dstile, strict=0)
-    if options.verbose:
+        config.out_drv.CreateCopy(tilefilename, dstile, strict=0)
+    if config.options.verbose:
         print "\tbuild from zoom", tz + 1, " tiles:", 2 * tx, 2 * ty, 2 * tx + 1, 2 * ty, 2 * tx, 2 * ty + 1, 2 * tx + 1, 2 * ty + 1 # Create a KML file for this tile.
-    if kml:
-        f = open(os.path.join(output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
-        f.write(generate_kml(tileext,TILESIZE,options,tileswne,tx, ty, tz, children))
+    if config.kml:
+        f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
+        f.write(generate_kml(config.tileext,TILESIZE,config.options,profile.tileswne,tx, ty, tz, children))
         f.close()
 
 
-def generate_overview_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,resampling,kml,tmaxz,tminz,tminmax,dataBandsCount,tileswne,stopped):
+def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,tiledriver,options,output,resampling,kml,tmaxz,tminz,tminmax,dataBandsCount,tileswne,stopped):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
     
     print("Generating Overview Tiles:")
     
-    tilebands = dataBandsCount + 1
+    tilebands = out_data.dataBandsCount + 1
     
     # Usage of existing tiles: from 4 underlying tiles generate one as overview.
     
     tcount = 0
-    for tz in range(tmaxz-1, tminz-1, -1):
-        tminx, tminy, tmaxx, tmaxy = tminmax[tz]
+    for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
+        tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         tcount += (1+abs(tmaxx-tminx)) * (1+abs(tmaxy-tminy))
 
     ti = 0
     
     # querysize = TILESIZE * 2
     
-    for tz in range(tmaxz-1, tminz-1, -1):
-        tminx, tminy, tmaxx, tmaxy = tminmax[tz]
+    for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
+        tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             for tx in range(tminx, tmaxx+1):
                 
-                if stopped:
+                if config.stopped:
                     break    
                 ti += 1
-                tilefilename = os.path.join( output, str(tz), str(tx), "%s.%s" % (ty, tileext) )
+                tilefilename = os.path.join( config.output, str(tz), str(tx), "%s.%s" % (ty, config.tileext) )
 
-                if options.verbose:
+                if config.options.verbose:
                     print(ti,'/',tcount, tilefilename) #, "( TileMapService: z / x / y )"
                 
-                if options.resume and os.path.exists(tilefilename):
-                    if options.verbose:
+                if config.options.resume and os.path.exists(tilefilename):
+                    if config.options.verbose:
                         print("Tile generation skiped because of --resume")
                     else:
                         progressbar( ti / float(tcount) )
@@ -2139,8 +2139,8 @@ def generate_overview_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,re
                 # Create directories for the tile
                 if not os.path.exists(os.path.dirname(tilefilename)):
                     os.makedirs(os.path.dirname(tilefilename))
-                generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tminmax,output,tileext,options,tiledriver,resampling,out_drv,kml,tileswne)
-                if not options.verbose:
+                generate_overview_tile(tilebands, tz, ty, tx, tilefilename,config,tile,profile)
+                if not config.options.verbose:
                     progressbar(ti / float(tcount))
 
 
@@ -2156,13 +2156,13 @@ def process(config):
     config.open_input()
     
     # Generation of main metadata files and HTML viewers
-    generate_metadata(config.options,config.output,config.kml,config.tileext,config.tminmax,config.tminz,config.tmaxz,config.nativezoom,config.ominx,config.ominy,config.omaxx,config.omaxy,config.mercator,config.tileswne,config.out_srs,config.out_gt)
+    generate_metadata(config,profile,tile,out_data)
     
     # Generation of the lowest tiles
-    generate_base_tiles(config.mem_drv,config.out_drv,config.tileext,config.tiledriver,config.options,config.output,config.querysize_c,config.resampling,config.kml,config.tminmax,config.tmaxz,config.tsize,config.nativezoom,config.out_ds,config.dataBandsCount,config.alphaband,config.tileswne,config.mercator,config.geodetic,config.stopped)
-    
+    generate_base_tiles(config,profile,tile,out_data)
+
     # Generation of the overview tiles (higher in the pyramid)
-    generate_overview_tiles(config.mem_drv,config.out_drv,config.tileext,config.tiledriver,config.options,config.output,config.resampling,config.kml,config.tmaxz,config.tminz,config.tminmax,config.dataBandsCount,config.tileswne,config.stopped)
+    generate_overview_tiles(config,profile,tile,out_data)
 
 
 
