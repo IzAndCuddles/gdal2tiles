@@ -1896,8 +1896,6 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
             print "\tNative Extent (querysize", nativesize, "): ", rb, wb
         # Tile bounds in raster coordinates for ReadRaster query
         rb, wb = geo_query(ds, b[0], b[3], b[2], b[1], querysize=querysize)
-        rx, ry, rxsize, rysize = rb
-        wx, wy, wxsize, wysize = wb
     else:
         tsize = int(tsize[tz]) # tilesize in raster coordinates for actual zoom
         xsize = out_ds.RasterXSize # size of the raster in pixels
@@ -1920,7 +1918,9 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
         wxsize, wysize = int(rxsize / float(tsize) * tilesize), int(rysize / float(tsize) * tilesize)
         if wysize != tilesize:
             wy = tilesize - wysize
-    return rx, ry, rxsize, rysize, wx, wy, wxsize, wysize, querysize
+        rb = (rx,ry,rxsize,rysize)
+        wb = (wx,wy,wxsize,wysize)
+    return rb, wb, querysize
 
 def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rx, ry, rxsize, rysize, wx, wy, wxsize, wysize, mem_drv,tilesize,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling):
     # Tile dataset in memory
@@ -2015,8 +2015,10 @@ def generate_base_tiles(mem_drv,tilesize,dataBandsCount,alphaband,options,out_dr
             if not os.path.exists(os.path.dirname(tilefilename)):
                 os.makedirs(os.path.dirname(tilefilename))
 
-            rx, ry, rxsize, rysize, wx, wy, wxsize, wysize, querysize = tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom,tilesize)
+            rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom,tilesize)
                 
+            rx, ry, rxsize, rysize = rb
+            wx, wy, wxsize, wysize = wb
             if options.verbose:
                 print("\tReadRaster Extent: ", (rx, ry, rxsize, rysize), (wx, wy, wxsize, wysize))
                 
