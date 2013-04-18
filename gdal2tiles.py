@@ -438,9 +438,10 @@ class OutData(object):
         self.dataBandCount
         self.out_gt
 
+
 class Configuration (object):
 
-    def __init__(self,arguments):
+    def __init__(self,arguments,tile):
         
         self.stopped = False
         self.input = None
@@ -502,17 +503,17 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
         self.init_resampling()
         
         # User specified zoom levels
-        self.tminz = None
-        self.tmaxz = None
+        tile.tminz = None
+        tile.tmaxz = None
         if self.options.zoom:
             minmax = self.options.zoom.split('-',1)
             minmax.extend([''])
             min_, max_ = minmax[:2]
-            self.tminz = int(min_)
+            tile.tminz = int(min_)
             if max:
-                self.tmaxz = int(max_)
+                tile.tmaxz = int(max_)
             else:
-                self.tmaxz = int(min_) 
+                tile.tmaxz = int(min_) 
         
         # KML generation
         self.kml = self.options.kml
@@ -612,7 +613,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
                 self.resampling = gdal.GRA_Lanczos
 
 
-    def open_input(self):
+    def open_input(self,profile,tile,out_data):
         """Initialization of the input raster, reprojection if necessary"""
         
         gdal.AllRegister()
@@ -711,7 +712,7 @@ gdal2tiles temp.vrt""" % self.input )
         
         # Are the reference systems the same? Reproject if necessary.
 
-        self.out_ds = None
+        out_data.out_ds = None
         
         if self.options.profile in ('mercator', 'geodetic'):
                         
@@ -723,28 +724,28 @@ gdal2tiles temp.vrt""" % self.input )
                 
                 if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
                     
-                    self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
+                    self.image_warping(out_data,in_ds, in_nodata, i, in_srs_wkt)
                         
             else:
                 self.error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system." )
 
-            if self.out_ds and self.options.verbose:
-                print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (self.out_ds.RasterXSize, self.out_ds.RasterYSize, self.out_ds.RasterCount))
+            if out_data.out_ds and self.options.verbose:
+                print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize, out_data.out_ds.RasterCount))
         
-        if not self.out_ds:
-            self.out_ds = in_ds
+        if not out_data.out_ds:
+            out_data.out_ds = in_ds
 
         #
         # Here we should have a raster (out_ds) in the correct Spatial Reference system
         #
 
         # Get alpha band (either directly or from NODATA value)
-        self.alphaband = self.out_ds.GetRasterBand(1).GetMaskBand()
-        if (self.alphaband.GetMaskFlags() & gdal.GMF_ALPHA) or self.out_ds.RasterCount==4 or self.out_ds.RasterCount==2:
+        self.alphaband = out_data.out_ds.GetRasterBand(1).GetMaskBand()
+        if (self.alphaband.GetMaskFlags() & gdal.GMF_ALPHA) or out_data.out_ds.RasterCount==4 or out_data.out_ds.RasterCount==2:
             # TODO: Better test for alpha band in the dataset
-            self.dataBandsCount = self.out_ds.RasterCount - 1
+            self.dataBandsCount = out_data.out_ds.RasterCount - 1
         else:
-            self.dataBandsCount = self.out_ds.RasterCount
+            self.dataBandsCount = out_data.out_ds.RasterCount
 
         # KML test
         #self.isepsg4326 = False : on le remplace par isepsg4326 car var utilisee uniquement dans open_input
@@ -759,7 +760,7 @@ gdal2tiles temp.vrt""" % self.input )
 
         # Read the georeference 
 
-        self.out_gt = self.out_ds.GetGeoTransform()
+        self.out_gt = out_data.out_ds.GetGeoTransform()
             
         #originX, originY = self.out_gt[0], self.out_gt[3]
         #pixelSize = self.out_gt[1] # = self.out_gt[5]
@@ -782,9 +783,9 @@ gdal2tiles temp.vrt""" % self.input )
 
         # Output Bounds - coordinates in the output SRS
         self.ominx = self.out_gt[0]
-        self.omaxx = self.out_gt[0]+self.out_ds.RasterXSize*self.out_gt[1]
+        self.omaxx = self.out_gt[0]+out_data.out_ds.RasterXSize*self.out_gt[1]
         self.omaxy = self.out_gt[3]
-        self.ominy = self.out_gt[3]-self.out_ds.RasterYSize*self.out_gt[1]
+        self.ominy = self.out_gt[3]-out_data.out_ds.RasterYSize*self.out_gt[1]
         # Note: maybe round(x, 14) to avoid the gdal_translate behaviour, when 0 becomes -1e-15
 
         if self.options.verbose:
@@ -798,9 +799,8 @@ gdal2tiles temp.vrt""" % self.input )
         
         
         
-    def image_warping(self, in_ds, in_nodata, i, in_srs_wkt):
+    def image_warping(self,out_data, in_ds, in_nodata, i, in_srs_wkt):
         # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
-        out_data = OutData()
         out_data.out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
     # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
         if self.options.verbose:
@@ -864,11 +864,8 @@ gdal2tiles temp.vrt""" % self.input )
         s = '''
     '''
 
-    def tile_range(self,in_srs,in_srs_wkt,srs4326,isepsg4326):
+    def tile_range(self,profile,in_srs,in_srs_wkt,srs4326,isepsg4326):
         self.nativezoom = None
-        profile = Profile()
-        self.geodetic = None
-        self.mercator = None
         self.tsize= None
         if self.options.profile == 'mercator':
             self.tile_range_mercator(profile)
@@ -898,9 +895,9 @@ gdal2tiles temp.vrt""" % self.input )
                 self.tileswne = lambda x, y, z: (0,0,0,0)
         
     
-    def tile_range_raster(self):
+    def tile_range_raster(self,out_data):
         log2 = lambda x:math.log10(x) / math.log10(2) # log2 (base 2 logarithm)
-        self.nativezoom = int(max(math.ceil(log2(self.out_ds.RasterXSize / float(TILESIZE))), math.ceil(log2(self.out_ds.RasterYSize / float(TILESIZE)))))
+        self.nativezoom = int(max(math.ceil(log2(out_data.out_ds.RasterXSize / float(TILESIZE))), math.ceil(log2(out_data.out_ds.RasterYSize / float(TILESIZE)))))
         if self.options.verbose:
             print "Native zoom of the raster:", self.nativezoom
     # Get the minimal zoom level (whole raster in one tile)
@@ -915,17 +912,17 @@ gdal2tiles temp.vrt""" % self.input )
         for tz in range(0, self.tmaxz + 1):
             tsize = 2.0 ** (self.nativezoom - tz) * TILESIZE
             tminx, tminy = 0, 0
-            tmaxx = int(math.ceil(self.out_ds.RasterXSize / tsize)) - 1
-            tmaxy = int(math.ceil(self.out_ds.RasterYSize / tsize)) - 1
+            tmaxx = int(math.ceil(out_data.out_ds.RasterXSize / tsize)) - 1
+            tmaxy = int(math.ceil(out_data.out_ds.RasterYSize / tsize)) - 1
             self.tsize[tz] = math.ceil(tsize)
             self.tminmax[tz] = tminx, tminy, tmaxx, tmaxy
         
 
 
-    def tile_range_geodetic(self,profile):
+    def tile_range_geodetic(self,profile,out_data):
         #self.geodetic = GlobalGeodetic() # from globalmaptiles.py
     # Function which generates SWNE in LatLong for given tile
-        self.tileswne = profile.geodetic.TileLatLonBounds
+        profile.tileswne = profile.geodetic.TileLatLonBounds
     # Generate table with min max tile coordinates for all zoomlevels
         self.tminmax = list(range(0, 32))
         for tz in range(0, 32):
@@ -938,7 +935,7 @@ gdal2tiles temp.vrt""" % self.input )
     # TODO: Maps crossing 180E (Alaska?)
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tminz == None:
-            self.tminz = profile.geodetic.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(TILESIZE))
+            self.tminz = profile.geodetic.ZoomForPixelSize(self.out_gt[1] * max(out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize) / float(TILESIZE))
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tmaxz == None:
             self.tmaxz = profile.geodetic.ZoomForPixelSize(self.out_gt[1])
@@ -947,10 +944,10 @@ gdal2tiles temp.vrt""" % self.input )
 
 
 
-    def tile_range_mercator(self,profile):
+    def tile_range_mercator(self,profile,out_data):
         #self.mercator = GlobalMercator() # from globalmaptiles.py
     # Function which generates SWNE in LatLong for given tile
-        self.tileswne = profile.mercator.TileLatLonBounds
+        profile.tileswne = profile.mercator.TileLatLonBounds
     # Generate table with min max tile coordinates for all zoomlevels
         self.tminmax = list(range(0, 32))
         for tz in range(0, 32):
@@ -962,14 +959,14 @@ gdal2tiles temp.vrt""" % self.input )
     # TODO: Maps crossing 180E (Alaska?)
     # Get the minimal zoom level (map covers area equivalent to one tile)
         if self.tminz == None:
-            self.tminz = profile.mercator.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(TILESIZE))
+            self.tminz = profile.mercator.ZoomForPixelSize(self.out_gt[1] * max(out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize) / float(TILESIZE))
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tmaxz == None:
             self.tmaxz = profile.mercator.ZoomForPixelSize(self.out_gt[1])
         if self.options.verbose:
             print "Bounds (latlong):", profile.mercator.MetersToLatLon(self.ominx, self.ominy), profile.mercator.MetersToLatLon(self.omaxx, self.omaxy)
             print 'MinZoomLevel:', self.tminz
-            print "MaxZoomLevel:", self.tmaxz, "(", self.mercator.Resolution(self.tmaxz), ")"
+            print "MaxZoomLevel:", self.tmaxz, "(", profile.mercator.Resolution(self.tmaxz), ")"
 
 
 
