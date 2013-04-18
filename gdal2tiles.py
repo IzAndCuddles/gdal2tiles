@@ -409,9 +409,6 @@ class GlobalGeodetic(object):
         return (b[1],b[0],b[3],b[2])
 
 
-
-
-
 class Profile(object):
     
     def __init__(self):
@@ -424,8 +421,22 @@ class Tile(object):
     def __init__(self):
         self.tminz=None
         self.tmaxz=None
+        self.tminmax
+        self.tsize
+        self.nativezoom
+        self.ominx
+        self.omaxx
+        self.ominy
+        self.omaxy
         
-
+        
+class OutData(object):
+    
+    def __init__(self):
+        self.out_ds
+        self.alphaband
+        self.dataBandCount
+        self.out_gt
 
 class Configuration (object):
 
@@ -782,6 +793,7 @@ gdal2tiles temp.vrt""" % self.input )
         #
         # Calculating ranges for tiles in different zoom levels
         #
+        tile = Tile()
         self.tile_range(in_srs,in_srs_wkt,srs4326,isepsg4326)
         
         
@@ -853,13 +865,14 @@ gdal2tiles temp.vrt""" % self.input )
 
     def tile_range(self,in_srs,in_srs_wkt,srs4326,isepsg4326):
         self.nativezoom = None
+        profile = Profile()
         self.geodetic = None
         self.mercator = None
         self.tsize= None
         if self.options.profile == 'mercator':
-            self.tile_range_mercator()
+            self.tile_range_mercator(profile)
         if self.options.profile == 'geodetic':
-            self.tile_range_geodetic()
+            self.tile_range_geodetic(profile)
         if self.options.profile == 'raster':
             self.tile_range_raster()
             # Function which generates SWNE in LatLong for given tile
@@ -908,15 +921,15 @@ gdal2tiles temp.vrt""" % self.input )
         
 
 
-    def tile_range_geodetic(self):
-        self.geodetic = GlobalGeodetic() # from globalmaptiles.py
+    def tile_range_geodetic(self,profile):
+        #self.geodetic = GlobalGeodetic() # from globalmaptiles.py
     # Function which generates SWNE in LatLong for given tile
-        self.tileswne = self.geodetic.TileLatLonBounds
+        self.tileswne = profile.geodetic.TileLatLonBounds
     # Generate table with min max tile coordinates for all zoomlevels
         self.tminmax = list(range(0, 32))
         for tz in range(0, 32):
-            tminx, tminy = self.geodetic.LatLonToTile(self.ominx, self.ominy, tz)
-            tmaxx, tmaxy = self.geodetic.LatLonToTile(self.omaxx, self.omaxy, tz) # crop tiles extending world limits (+-180,+-90)
+            tminx, tminy = profile.geodetic.LatLonToTile(self.ominx, self.ominy, tz)
+            tmaxx, tmaxy = profile.geodetic.LatLonToTile(self.omaxx, self.omaxy, tz) # crop tiles extending world limits (+-180,+-90)
             tminx, tminy = max(0, tminx), max(0, tminy)
             tmaxx, tmaxy = min(2 ** (tz + 1) - 1, tmaxx), min(2 ** tz - 1, tmaxy)
             self.tminmax[tz] = tminx, tminy, tmaxx, tmaxy
@@ -924,36 +937,36 @@ gdal2tiles temp.vrt""" % self.input )
     # TODO: Maps crossing 180E (Alaska?)
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tminz == None:
-            self.tminz = self.geodetic.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(TILESIZE))
+            self.tminz = profile.geodetic.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(TILESIZE))
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tmaxz == None:
-            self.tmaxz = self.geodetic.ZoomForPixelSize(self.out_gt[1])
+            self.tmaxz = profile.geodetic.ZoomForPixelSize(self.out_gt[1])
         if self.options.verbose:
             print "Bounds (latlong):", self.ominx, self.ominy, self.omaxx, self.omaxy
 
 
 
-    def tile_range_mercator(self):
-        self.mercator = GlobalMercator() # from globalmaptiles.py
+    def tile_range_mercator(self,profile):
+        #self.mercator = GlobalMercator() # from globalmaptiles.py
     # Function which generates SWNE in LatLong for given tile
-        self.tileswne = self.mercator.TileLatLonBounds
+        self.tileswne = profile.mercator.TileLatLonBounds
     # Generate table with min max tile coordinates for all zoomlevels
         self.tminmax = list(range(0, 32))
         for tz in range(0, 32):
-            tminx, tminy = self.mercator.MetersToTile(self.ominx, self.ominy, tz)
-            tmaxx, tmaxy = self.mercator.MetersToTile(self.omaxx, self.omaxy, tz) # crop tiles extending world limits (+-180,+-90)
+            tminx, tminy = profile.mercator.MetersToTile(self.ominx, self.ominy, tz)
+            tmaxx, tmaxy = profile.mercator.MetersToTile(self.omaxx, self.omaxy, tz) # crop tiles extending world limits (+-180,+-90)
             tminx, tminy = max(0, tminx), max(0, tminy)
             tmaxx, tmaxy = min(2 ** tz - 1, tmaxx), min(2 ** tz - 1, tmaxy)
             self.tminmax[tz] = tminx, tminy, tmaxx, tmaxy
     # TODO: Maps crossing 180E (Alaska?)
     # Get the minimal zoom level (map covers area equivalent to one tile)
         if self.tminz == None:
-            self.tminz = self.mercator.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(TILESIZE))
+            self.tminz = profile.mercator.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(TILESIZE))
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tmaxz == None:
-            self.tmaxz = self.mercator.ZoomForPixelSize(self.out_gt[1])
+            self.tmaxz = profile.mercator.ZoomForPixelSize(self.out_gt[1])
         if self.options.verbose:
-            print "Bounds (latlong):", self.mercator.MetersToLatLon(self.ominx, self.ominy), self.mercator.MetersToLatLon(self.omaxx, self.omaxy)
+            print "Bounds (latlong):", profile.mercator.MetersToLatLon(self.ominx, self.ominy), profile.mercator.MetersToLatLon(self.omaxx, self.omaxy)
             print 'MinZoomLevel:', self.tminz
             print "MaxZoomLevel:", self.tmaxz, "(", self.mercator.Resolution(self.tmaxz), ")"
 
