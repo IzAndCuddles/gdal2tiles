@@ -503,8 +503,6 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
         self.init_resampling()
         
         # User specified zoom levels
-        tile.tminz = None
-        tile.tmaxz = None
         if self.options.zoom:
             minmax = self.options.zoom.split('-',1)
             minmax.extend([''])
@@ -954,11 +952,11 @@ gdal2tiles temp.vrt""" % self.input )
             tile.tminmax[tz] = tminx, tminy, tmaxx, tmaxy
     # TODO: Maps crossing 180E (Alaska?)
     # Get the minimal zoom level (map covers area equivalent to one tile)
-        if self.tminz == None:
-            self.tminz = profile.mercator.ZoomForPixelSize(out_data.out_gt[1] * max(out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize) / float(TILESIZE))
+        if tile.tminz == None:
+            tile.tminz = profile.mercator.ZoomForPixelSize(out_data.out_gt[1] * max(out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize) / float(TILESIZE))
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
-        if self.tmaxz == None:
-            self.tmaxz = profile.mercator.ZoomForPixelSize(out_data.out_gt[1])
+        if tile.tmaxz == None:
+            tile.tmaxz = profile.mercator.ZoomForPixelSize(out_data.out_gt[1])
         if self.options.verbose:
             print "Bounds (latlong):", profile.mercator.MetersToLatLon(tile.ominx, tile.ominy), profile.mercator.MetersToLatLon(tile.omaxx, tile.omaxy)
             print 'MinZoomLevel:', self.tminz
@@ -2159,7 +2157,6 @@ def process(config,profile,out_data,tile):
 
     # Generation of the overview tiles (higher in the pyramid)
     generate_overview_tiles(config,profile,tile,out_data)
-
 
 
 
