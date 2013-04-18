@@ -867,7 +867,7 @@ gdal2tiles temp.vrt""" % self.input )
                 self.tileswne = lambda x, y, z: (0,0,0,0)
         
     
-    def tile_range_raster(self, tz, tminx, tminy, tmaxx, tmaxy):
+    def tile_range_raster(self):
         log2 = lambda x:math.log10(x) / math.log10(2) # log2 (base 2 logarithm)
         self.nativezoom = int(max(math.ceil(log2(self.out_ds.RasterXSize / float(TILESIZE))), math.ceil(log2(self.out_ds.RasterYSize / float(TILESIZE)))))
         if self.options.verbose:
@@ -891,7 +891,7 @@ gdal2tiles temp.vrt""" % self.input )
         
 
 
-    def tile_range_geodetic(self, tz, tminx, tminy, tmaxx, tmaxy):
+    def tile_range_geodetic(self):
         self.geodetic = GlobalGeodetic() # from globalmaptiles.py
     # Function which generates SWNE in LatLong for given tile
         self.tileswne = self.geodetic.TileLatLonBounds
