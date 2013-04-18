@@ -99,6 +99,9 @@ Class is available under the open-source GDAL license (www.gdal.org).
 """
 
 MAXZOOMLEVEL = 32
+TILESIZE = 256
+
+
 
 class GlobalMercator(object):
     """
@@ -416,11 +419,11 @@ class Configuration (object):
         self.output = None
         
         # Tile format
-        self.tilesize = 256
+        #self.tilesize = 256 -- utilisation de la constante TILESIZE
         self.tiledriver = 'PNG'
         self.tileext = 'png'
         
-        self.querysize_c = 4 * self.tilesize
+        self.querysize_c = 4 * TILESIZE
         
         # RUN THE ARGUMENT PARSER:
         parser=self.optparse_init()
@@ -569,10 +572,10 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
                     self.error("'antialias' resampling algorithm is not available.", "Install PIL (Python Imaging Library) and numpy.")
             elif self.options.resampling == 'near':
                 self.resampling = gdal.GRA_NearestNeighbour
-                self.querysize_c = self.tilesize
+                self.querysize_c = TILESIZE
             elif self.options.resampling == 'bilinear':
                 self.resampling = gdal.GRA_Bilinear
-                self.querysize_c = self.tilesize * 2
+                self.querysize_c = TILESIZE * 2
             elif self.options.resampling == 'cubic':
                 self.resampling = gdal.GRA_Cubic
             elif self.options.resampling == 'cubicspline':
@@ -849,10 +852,10 @@ gdal2tiles temp.vrt""" % self.input )
                 def rastertileswne(x,y,z):
                     pixelsizex = (2**(self.tmaxz-z) * self.out_gt[1]) # X-pixel size in level
                     pixelsizey = (2**(self.tmaxz-z) * self.out_gt[1]) # Y-pixel size in level (usually -1*pixelsizex)
-                    west = self.out_gt[0] + x*self.tilesize*pixelsizex
-                    east = west + self.tilesize*pixelsizex
-                    south = self.ominy + y*self.tilesize*pixelsizex
-                    north = south + self.tilesize*pixelsizex
+                    west = self.out_gt[0] + x*TILESIZE*pixelsizex
+                    east = west + TILESIZE*pixelsizex
+                    south = self.ominy + y*TILESIZE*pixelsizex
+                    north = south + TILESIZE*pixelsizex
                     if not isepsg4326:
                         # Transformation to EPSG:4326 (WGS84 datum)
                         west, south = ct.TransformPoint(west, south)[:2]
@@ -866,7 +869,7 @@ gdal2tiles temp.vrt""" % self.input )
     
     def tile_range_raster(self, tz, tminx, tminy, tmaxx, tmaxy):
         log2 = lambda x:math.log10(x) / math.log10(2) # log2 (base 2 logarithm)
-        self.nativezoom = int(max(math.ceil(log2(self.out_ds.RasterXSize / float(self.tilesize))), math.ceil(log2(self.out_ds.RasterYSize / float(self.tilesize)))))
+        self.nativezoom = int(max(math.ceil(log2(self.out_ds.RasterXSize / float(TILESIZE))), math.ceil(log2(self.out_ds.RasterYSize / float(TILESIZE)))))
         if self.options.verbose:
             print "Native zoom of the raster:", self.nativezoom
     # Get the minimal zoom level (whole raster in one tile)
@@ -879,7 +882,7 @@ gdal2tiles temp.vrt""" % self.input )
         self.tminmax = list(range(0, self.tmaxz + 1))
         self.tsize = list(range(0, self.tmaxz + 1))
         for tz in range(0, self.tmaxz + 1):
-            tsize = 2.0 ** (self.nativezoom - tz) * self.tilesize
+            tsize = 2.0 ** (self.nativezoom - tz) * TILESIZE
             tminx, tminy = 0, 0
             tmaxx = int(math.ceil(self.out_ds.RasterXSize / tsize)) - 1
             tmaxy = int(math.ceil(self.out_ds.RasterYSize / tsize)) - 1
@@ -904,7 +907,7 @@ gdal2tiles temp.vrt""" % self.input )
     # TODO: Maps crossing 180E (Alaska?)
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tminz == None:
-            self.tminz = self.geodetic.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(self.tilesize))
+            self.tminz = self.geodetic.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(TILESIZE))
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tmaxz == None:
             self.tmaxz = self.geodetic.ZoomForPixelSize(self.out_gt[1])
@@ -928,7 +931,7 @@ gdal2tiles temp.vrt""" % self.input )
     # TODO: Maps crossing 180E (Alaska?)
     # Get the minimal zoom level (map covers area equivalent to one tile)
         if self.tminz == None:
-            self.tminz = self.mercator.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(self.tilesize))
+            self.tminz = self.mercator.ZoomForPixelSize(self.out_gt[1] * max(self.out_ds.RasterXSize, self.out_ds.RasterYSize) / float(TILESIZE))
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if self.tmaxz == None:
             self.tmaxz = self.mercator.ZoomForPixelSize(self.out_gt[1])
@@ -969,7 +972,7 @@ def stop(stopped):
 
 # FONCTIONS METADATAS
 
-def generate_tilemapresource(options,swne,tilesize,tileext,out_srs,tminz,tmaxz,nativezoom,out_gt):
+def generate_tilemapresource(options,swne,tileext,out_srs,tminz,tmaxz,nativezoom,out_gt):
     """
     Template for tilemapresource.xml. Returns filled string. Expected variables:
       title, north, south, east, west, isepsg4326, projection, publishurl,
@@ -979,7 +982,7 @@ def generate_tilemapresource(options,swne,tilesize,tileext,out_srs,tminz,tmaxz,n
     args = {}
     args['title'] = options.title
     args['south'], args['west'], args['north'], args['east'] = swne
-    args['tilesize'] = tilesize
+    args['tilesize'] = TILESIZE
     args['tileformat'] = tileext
     args['publishurl'] = options.url
     args['profile'] = options.profile
@@ -1017,14 +1020,14 @@ def generate_tilemapresource(options,swne,tilesize,tileext,out_srs,tminz,tmaxz,n
 """
     return s
 
-def generate_kml(tileext,tilesize,options,tileswne,tx, ty, tz, children = [], **args):
+def generate_kml(tileext,options,tileswne,tx, ty, tz, children = [], **args):
     """
     Template for the KML. Returns filled string.
     """
     args['tx'], args['ty'], args['tz'] = tx, ty, tz
     args['tileformat'] = tileext
     if 'tilesize' not in args:
-        args['tilesize'] = tilesize
+        args['tilesize'] = TILESIZE
 
     if 'minlodpixels' not in args:
         args['minlodpixels'] = int( args['tilesize'] / 2 ) # / 2.56) # default 128
@@ -1123,7 +1126,7 @@ def generate_kml(tileext,tilesize,options,tileswne,tx, ty, tz, children = [], **
 """
     return s
 
-def generate_googlemaps(options,swne,tminz,tmaxz,tilesize,tileext,kml):
+def generate_googlemaps(options,swne,tminz,tmaxz,tileext,kml):
     """
     Template for googlemaps.html implementing Overlay of tiles for 'mercator' profile.
     It returns filled string. Expected variables:
@@ -1135,7 +1138,7 @@ def generate_googlemaps(options,swne,tminz,tmaxz,tilesize,tileext,kml):
     args['south'], args['west'], args['north'], args['east'] = swne
     args['minzoom'] = tminz
     args['maxzoom'] = tmaxz
-    args['tilesize'] = tilesize
+    args['tilesize'] = TILESIZE
     args['tileformat'] = tileext
     args['publishurl'] = options.url
     args['copyright'] = options.copyright
@@ -1419,7 +1422,7 @@ def generate_googlemaps(options,swne,tminz,tmaxz,tilesize,tileext,kml):
 
     return s
 
-def generate_openlayers(options,swne,tminz,tmaxz,tilesize,tileext,nativezoom,out_gt):
+def generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt):
     """
     Template for openlayers.html implementing overlay of available Spherical Mercator layers.
 
@@ -1434,7 +1437,7 @@ def generate_openlayers(options,swne,tminz,tmaxz,tilesize,tileext,nativezoom,out
     args['south'], args['west'], args['north'], args['east'] = swne
     args['minzoom'] = tminz
     args['maxzoom'] = tmaxz
-    args['tilesize'] = tilesize
+    args['tilesize'] = TILESIZE
     args['tileformat'] = tileext
     args['publishurl'] = options.url
     args['copyright'] = options.copyright
@@ -1716,7 +1719,7 @@ def generate_openlayers(options,swne,tminz,tmaxz,tilesize,tileext,nativezoom,out
     return s
 
 
-def generate_metadata(output,options,mercator,ominx,ominy,omaxx,omaxy,kml,tminmax,tminz,tmaxz,tilesize,tileext,tileswne,out_srs,nativezoom,out_gt):
+def generate_metadata(output,options,mercator,ominx,ominy,omaxx,omaxy,kml,tminmax,tminz,tmaxz,tileext,tileswne,out_srs,nativezoom,out_gt):
     """Generation of main metadata files and HTML viewers (metadata related to particular tiles are generated during the tile processing)."""
     
     if not os.path.exists(output):
@@ -1734,14 +1737,14 @@ def generate_metadata(output,options,mercator,ominx,ominy,omaxx,omaxy,kml,tminma
         if options.webviewer in ('all','google') and options.profile == 'mercator':
             if not options.resume or not os.path.exists(os.path.join(output, 'googlemaps.html')):
                 f = open(os.path.join(output, 'googlemaps.html'), 'w')
-                f.write( generate_googlemaps(options,swne,tminz,tmaxz,tilesize,tileext,kml) )
+                f.write( generate_googlemaps(options,swne,tminz,tmaxz,tileext,kml) )
                 f.close()
 
         # Generate openlayers.html
         if options.webviewer in ('all','openlayers'):
             if not options.resume or not os.path.exists(os.path.join(output, 'openlayers.html')):
                 f = open(os.path.join(output, 'openlayers.html'), 'w')
-                f.write( generate_openlayers(options,swne,tminz,tmaxz,tilesize,tileext,nativezoom,out_gt) )
+                f.write( generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt) )
                 f.close()
 
     elif options.profile == 'geodetic':
@@ -1756,7 +1759,7 @@ def generate_metadata(output,options,mercator,ominx,ominy,omaxx,omaxy,kml,tminma
         if options.webviewer in ('all','openlayers'):
             if not options.resume or not os.path.exists(os.path.join(output, 'openlayers.html')):
                 f = open(os.path.join(output, 'openlayers.html'), 'w')
-                f.write( generate_openlayers(options,swne,tminz,tmaxz,tilesize,tileext,nativezoom,out_gt) )
+                f.write( generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt) )
                 f.close()           
 
     elif options.profile == 'raster':
@@ -1770,14 +1773,14 @@ def generate_metadata(output,options,mercator,ominx,ominy,omaxx,omaxy,kml,tminma
         if options.webviewer in ('all','openlayers'):
             if not options.resume or not os.path.exists(os.path.join(output, 'openlayers.html')):
                 f = open(os.path.join(output, 'openlayers.html'), 'w')
-                f.write( generate_openlayers(options,swne,tminz,tmaxz,tilesize,tileext,nativezoom,out_gt) )
+                f.write( generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt) )
                 f.close()           
 
 
     # Generate tilemapresource.xml.
     if not options.resume or not os.path.exists(os.path.join(output, 'tilemapresource.xml')):
         f = open(os.path.join(output, 'tilemapresource.xml'), 'w')
-        f.write( generate_tilemapresource(options,swne,tilesize,tileext,out_srs,tminz,tmaxz,nativezoom,out_gt))
+        f.write( generate_tilemapresource(options,swne,tileext,out_srs,tminz,tmaxz,nativezoom,out_gt))
         f.close()
 
     if kml:
@@ -1792,7 +1795,7 @@ def generate_metadata(output,options,mercator,ominx,ominy,omaxx,omaxy,kml,tminma
         if kml:
             if not options.resume or not os.path.exists(os.path.join(output, 'doc.kml')):
                 f = open(os.path.join(output, 'doc.kml'), 'w')
-                f.write( generate_kml(tileext,tilesize,options,tileswne, None, None, None, children) )
+                f.write( generate_kml(tileext,options,tileswne, None, None, None, children) )
                 f.close()
 
 
@@ -1881,7 +1884,7 @@ def scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilen
         if res != 0:
             error("ReprojectImage() failed on %s, error %d" % (tilefilename, res))
 
-def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom,tilesize):
+def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom):
     if options.profile == 'mercator':
         # Tile bounds in EPSG:900913
         b = mercator.TileBounds(tx, ty, tz)
@@ -1901,7 +1904,7 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
         xsize = out_ds.RasterXSize # size of the raster in pixels
         ysize = out_ds.RasterYSize
         if tz >= nativezoom:
-            querysize = tilesize # int(2**(nativezoom-tz) * tilesize)
+            querysize = TILESIZE # int(2**(nativezoom-tz) * tilesize)
         rx = (tx) * tsize
         rxsize = 0
         if tx == tmaxx:
@@ -1915,21 +1918,21 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
             rysize = tsize
         ry = ysize - (ty * tsize) - rysize
         wx, wy = 0, 0
-        wxsize, wysize = int(rxsize / float(tsize) * tilesize), int(rysize / float(tsize) * tilesize)
-        if wysize != tilesize:
-            wy = tilesize - wysize
+        wxsize, wysize = int(rxsize / float(tsize) * TILESIZE), int(rysize / float(tsize) * TILESIZE)
+        if wysize != TILESIZE:
+            wy = TILESIZE - wysize
         rb = (rx,ry,rxsize,rysize)
         wb = (wx,wy,wxsize,wysize)
     return rb, wb, querysize
 
-def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, mem_drv,tilesize,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling):
+def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, mem_drv,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling):
     # Tile dataset in memory
     rx, ry, rxsize, rysize = rb
     wx, wy, wxsize, wysize = wb
-    dstile = mem_drv.Create('', tilesize, tilesize, tilebands)
+    dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
     data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, dataBandsCount + 1)))
     alpha = alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
-    if tilesize == querysize:
+    if TILESIZE == querysize:
         # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
         dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, dataBandsCount + 1)))
         dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
@@ -1956,12 +1959,12 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
         kmlfilename = os.path.join(output, str(tz), str(tx), '%d.kml' % ty)
         if not options.resume or not os.path.exists(kmlfilename):
             f = open(kmlfilename, 'w')
-            f.write(generate_kml(tileext,tilesize,options,tileswne,tx, ty, tz))
+            f.write(generate_kml(tileext,TILESIZE,options,tileswne,tx, ty, tz))
             f.close()
 
 
 
-def generate_base_tiles(mem_drv,tilesize,dataBandsCount,alphaband,options,out_drv,kml,output,tminmax,tmaxz,out_ds,querysize_c,stopped,tileext,tileswne,mercator,geodetic,tsize,nativezoom,tiledriver,resampling):
+def generate_base_tiles(mem_drv,dataBandsCount,alphaband,options,out_drv,kml,output,tminmax,tmaxz,out_ds,querysize_c,stopped,tileext,tileswne,mercator,geodetic,tsize,nativezoom,tiledriver,resampling):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
     
     print("Generating Base Tiles:")
@@ -2017,7 +2020,7 @@ def generate_base_tiles(mem_drv,tilesize,dataBandsCount,alphaband,options,out_dr
             if not os.path.exists(os.path.dirname(tilefilename)):
                 os.makedirs(os.path.dirname(tilefilename))
 
-            rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom,tilesize)
+            rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom)
 
             if options.verbose:
                 print("\tReadRaster Extent: ", rb, wb)
@@ -2025,18 +2028,18 @@ def generate_base_tiles(mem_drv,tilesize,dataBandsCount,alphaband,options,out_dr
             # Query is in 'nearest neighbour' but can be bigger in then the tilesize
             # We scale down the query to the tilesize by supplied algorithm.
 
-            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, mem_drv,tilesize,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling)
+            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, mem_drv,dataBandsCount,alphaband,options,out_drv,kml,output,tileext,tileswne,tiledriver,resampling)
                 
             if not options.verbose:
                 progressbar( ti / float(tcount) )
 
 
 
-def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tilesize,tminmax,output,tileext,options,tiledriver,resampling,out_drv,kml,tileswne):
-    dsquery = mem_drv.Create('', 2 * tilesize, 2 * tilesize, tilebands) # TODO: fill the null value
+def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tminmax,output,tileext,options,tiledriver,resampling,out_drv,kml,tileswne):
+    dsquery = mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands) # TODO: fill the null value
     #for i in range(1, tilebands+1):
     #   dsquery.GetRasterBand(1).Fill(tilenodata)
-    dstile = mem_drv.Create('', tilesize, tilesize, tilebands) # TODO: Implement more clever walking on the tiles with cache functionality
+    dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands) # TODO: Implement more clever walking on the tiles with cache functionality
     # probably walk should start with reading of four tiles from top left corner
     # Hilbert curve...
     children = []
@@ -2049,14 +2052,14 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tilesize,
                 if (ty == 0 and y == 1) or (ty != 0 and (y % (2 * ty)) != 0):
                     tileposy = 0
                 else:
-                    tileposy = tilesize
+                    tileposy = TILESIZE
                 if tx:
-                    tileposx = x % (2 * tx) * tilesize
+                    tileposx = x % (2 * tx) * TILESIZE
                 elif tx == 0 and x == 1:
-                    tileposx = tilesize
+                    tileposx = TILESIZE
                 else:
                     tileposx = 0
-                dsquery.WriteRaster(tileposx, tileposy, tilesize, tilesize, dsquerytile.ReadRaster(0, 0, tilesize, tilesize), band_list=list(range(1, tilebands + 1)))
+                dsquery.WriteRaster(tileposx, tileposy, TILESIZE, TILESIZE, dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE), band_list=list(range(1, tilebands + 1)))
                 children.append([x, y, tz + 1])
     
     scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
@@ -2068,11 +2071,11 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tilesize,
         print "\tbuild from zoom", tz + 1, " tiles:", 2 * tx, 2 * ty, 2 * tx + 1, 2 * ty, 2 * tx, 2 * ty + 1, 2 * tx + 1, 2 * ty + 1 # Create a KML file for this tile.
     if kml:
         f = open(os.path.join(output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
-        f.write(generate_kml(tileext,tilesize,options,tileswne,tx, ty, tz, children))
+        f.write(generate_kml(tileext,TILESIZE,options,tileswne,tx, ty, tz, children))
         f.close()
 
 
-def generate_overview_tiles(dataBandsCount,tmaxz,tminz,tminmax,stopped,output,tileext,options,mem_drv,tilesize,tiledriver,resampling,out_drv,kml,tileswne):
+def generate_overview_tiles(dataBandsCount,tmaxz,tminz,tminmax,stopped,output,tileext,options,mem_drv,tiledriver,resampling,out_drv,kml,tileswne):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
     
     print("Generating Overview Tiles:")
@@ -2088,7 +2091,7 @@ def generate_overview_tiles(dataBandsCount,tmaxz,tminz,tminmax,stopped,output,ti
 
     ti = 0
     
-    # querysize = tilesize * 2
+    # querysize = TILESIZE * 2
     
     for tz in range(tmaxz-1, tminz-1, -1):
         tminx, tminy, tmaxx, tmaxy = tminmax[tz]
@@ -2112,7 +2115,7 @@ def generate_overview_tiles(dataBandsCount,tmaxz,tminz,tminmax,stopped,output,ti
                 # Create directories for the tile
                 if not os.path.exists(os.path.dirname(tilefilename)):
                     os.makedirs(os.path.dirname(tilefilename))
-                generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tilesize,tminmax,output,tileext,options,tiledriver,resampling,out_drv,kml,tileswne)
+                generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tminmax,output,tileext,options,tiledriver,resampling,out_drv,kml,tileswne)
                 if not options.verbose:
                     progressbar(ti / float(tcount))
 
@@ -2125,13 +2128,13 @@ def process(config):
     config.open_input()
     
     # Generation of main metadata files and HTML viewers
-    generate_metadata(config.output,config.options,config.mercator,config.ominx,config.ominy,config.omaxx,config.omaxy,config.kml,config.tminmax,config.tminz,config.tmaxz,config.tilesize,config.tileext,config.tileswne,config.out_srs,config.nativezoom,config.out_gt)
+    generate_metadata(config.output,config.options,config.mercator,config.ominx,config.ominy,config.omaxx,config.omaxy,config.kml,config.tminmax,config.tminz,config.tmaxz,config.tileext,config.tileswne,config.out_srs,config.nativezoom,config.out_gt)
     
     # Generation of the lowest tiles
-    generate_base_tiles(config.mem_drv,config.tilesize,config.dataBandsCount,config.alphaband,config.options,config.out_drv,config.kml,config.output,config.tminmax,config.tmaxz,config.out_ds,config.querysize_c,config.stopped,config.tileext,config.tileswne,config.mercator,config.geodetic,config.tsize,config.nativezoom,config.tiledriver,config.resampling)
+    generate_base_tiles(config.mem_drv,config.dataBandsCount,config.alphaband,config.options,config.out_drv,config.kml,config.output,config.tminmax,config.tmaxz,config.out_ds,config.querysize_c,config.stopped,config.tileext,config.tileswne,config.mercator,config.geodetic,config.tsize,config.nativezoom,config.tiledriver,config.resampling)
     
     # Generation of the overview tiles (higher in the pyramid)
-    generate_overview_tiles(config.dataBandsCount,config.tmaxz,config.tminz,config.tminmax,config.stopped,config.output,config.tileext,config.options,config.mem_drv,config.tilesize,config.tiledriver,config.resampling,config.out_drv,config.kml,config.tileswne)
+    generate_overview_tiles(config.dataBandsCount,config.tmaxz,config.tminz,config.tminmax,config.stopped,config.output,config.tileext,config.options,config.mem_drv,config.tiledriver,config.resampling,config.out_drv,config.kml,config.tileswne)
 
 
 
