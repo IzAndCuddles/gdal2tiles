@@ -1719,7 +1719,7 @@ def generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt):
     return s
 
 
-def generate_metadata(output,options,mercator,ominx,ominy,omaxx,omaxy,kml,tminmax,tminz,tmaxz,tileext,tileswne,out_srs,nativezoom,out_gt):
+def generate_metadata(options,output,kml,tileext,tminmax,tminz,tmaxz,nativezoom,ominx,ominy,omaxx,omaxy,mercator,tileswne,out_srs,out_gt):
     """Generation of main metadata files and HTML viewers (metadata related to particular tiles are generated during the tile processing)."""
     
     if not os.path.exists(output):
@@ -1964,7 +1964,7 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
 
 
 
-def generate_base_tiles(mem_drv,dataBandsCount,alphaband,options,out_drv,kml,output,tminmax,tmaxz,out_ds,querysize_c,stopped,tileext,tileswne,mercator,geodetic,tsize,nativezoom,tiledriver,resampling):
+def generate_base_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,querysize_c,resampling,kml,tminmax,tmaxz,tsize,nativezoom,out_ds,dataBandsCount,alphaband,tileswne,mercator,geodetic,stopped):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
     
     print("Generating Base Tiles:")
@@ -2075,7 +2075,7 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,tminmax,o
         f.close()
 
 
-def generate_overview_tiles(dataBandsCount,tmaxz,tminz,tminmax,stopped,output,tileext,options,mem_drv,tiledriver,resampling,out_drv,kml,tileswne):
+def generate_overview_tiles(mem_drv,out_drv,tileext,tiledriver,options,output,resampling,kml,tmaxz,tminz,tminmax,dataBandsCount,tileswne,stopped):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
     
     print("Generating Overview Tiles:")
@@ -2128,13 +2128,13 @@ def process(config):
     config.open_input()
     
     # Generation of main metadata files and HTML viewers
-    generate_metadata(config.output,config.options,config.mercator,config.ominx,config.ominy,config.omaxx,config.omaxy,config.kml,config.tminmax,config.tminz,config.tmaxz,config.tileext,config.tileswne,config.out_srs,config.nativezoom,config.out_gt)
+    generate_metadata(config.options,config.output,config.kml,config.tileext,config.tminmax,config.tminz,config.tmaxz,config.nativezoom,config.ominx,config.ominy,config.omaxx,config.omaxy,config.mercator,config.tileswne,config.out_srs,config.out_gt)
     
     # Generation of the lowest tiles
-    generate_base_tiles(config.mem_drv,config.dataBandsCount,config.alphaband,config.options,config.out_drv,config.kml,config.output,config.tminmax,config.tmaxz,config.out_ds,config.querysize_c,config.stopped,config.tileext,config.tileswne,config.mercator,config.geodetic,config.tsize,config.nativezoom,config.tiledriver,config.resampling)
+    generate_base_tiles(config.mem_drv,config.out_drv,config.tileext,config.tiledriver,config.options,config.output,config.querysize_c,config.resampling,config.kml,config.tminmax,config.tmaxz,config.tsize,config.nativezoom,config.out_ds,config.dataBandsCount,config.alphaband,config.tileswne,config.mercator,config.geodetic,config.stopped)
     
     # Generation of the overview tiles (higher in the pyramid)
-    generate_overview_tiles(config.dataBandsCount,config.tmaxz,config.tminz,config.tminmax,config.stopped,config.output,config.tileext,config.options,config.mem_drv,config.tiledriver,config.resampling,config.out_drv,config.kml,config.tileswne)
+    generate_overview_tiles(config.mem_drv,config.out_drv,config.tileext,config.tiledriver,config.options,config.output,config.resampling,config.kml,config.tmaxz,config.tminz,config.tminmax,config.dataBandsCount,config.tileswne,config.stopped)
 
 
 
