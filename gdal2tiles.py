@@ -714,7 +714,7 @@ gdal2tiles temp.vrt""" % self.input )
             self.out_srs = in_srs
         
         # Are the reference systems the same? Reproject if necessary.
-        out_data=None
+        
         if self.options.profile in ('mercator', 'geodetic'):
                         
             if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
@@ -732,9 +732,10 @@ gdal2tiles temp.vrt""" % self.input )
 
             if out_data.out_ds and self.options.verbose:
                 print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize, out_data.out_ds.RasterCount))
+        else:
+            out_data=OutData()
         
         if not out_data.out_ds:
-            out_data=OutData()
             out_data.out_ds = in_ds
 
         #
@@ -912,9 +913,9 @@ gdal2tiles temp.vrt""" % self.input )
         if tile.tmaxz == None:
             tile.tmaxz = tile.nativezoom
     # Generate table with min max tile coordinates for all zoomlevels
-        tile.tminmax = list(range(0, self.tmaxz + 1))
-        tile.tsize = list(range(0, self.tmaxz + 1))
-        for tz in range(0, self.tmaxz + 1):
+        tile.tminmax = list(range(0, tile.tmaxz + 1))
+        tile.tsize = list(range(0, tile.tmaxz + 1))
+        for tz in range(0, tile.tmaxz + 1):
             tsize = 2.0 ** (tile.nativezoom - tz) * TILESIZE
             tminx, tminy = 0, 0
             tmaxx = int(math.ceil(out_data.out_ds.RasterXSize / tsize)) - 1
@@ -1992,7 +1993,7 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
         kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
         if not config.options.resume or not os.path.exists(kmlfilename):
             f = open(kmlfilename, 'w')
-            f.write(generate_kml(config.tileext,TILESIZE,config.options,profile.tileswne,tx, ty, tz))
+            f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
             f.close()
 
 
@@ -2053,7 +2054,7 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
             if not os.path.exists(os.path.dirname(tilefilename)):
                 os.makedirs(os.path.dirname(tilefilename))
 
-            rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,config.options,profile.mercator,profile.geodetic,tile.tsize,tile.nativezoom,out_data.out_ds)
+            rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,config.options,profile.mercator,profile.geodetic,tile.tsize,out_data.out_ds,tile.nativezoom)
 
             if config.options.verbose:
                 print("\tReadRaster Extent: ", rb, wb)
@@ -2110,7 +2111,7 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,config,tile,profi
         print "\tbuild from zoom", tz + 1, " tiles:", 2 * tx, 2 * ty, 2 * tx + 1, 2 * ty, 2 * tx, 2 * ty + 1, 2 * tx + 1, 2 * ty + 1 # Create a KML file for this tile.
     if config.kml:
         f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
-        f.write(generate_kml(config.tileext,TILESIZE,config.options,profile.tileswne,tx, ty, tz, children))
+        f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz, children))
         f.close()
 
 
