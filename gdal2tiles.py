@@ -894,11 +894,11 @@ gdal2tiles temp.vrt""" % self.input )
         if self.options.verbose:
             print "Native zoom of the raster:", tile.nativezoom
     # Get the minimal zoom level (whole raster in one tile)
-        if self.tminz == None:
-            self.tminz = 0
+        if tile.tminz == None:
+            tile.tminz = 0
     # Get the maximal zoom level (native resolution of the raster)
-        if self.tmaxz == None:
-            self.tmaxz = tile.nativezoom
+        if tile.tmaxz == None:
+            tile.tmaxz = tile.nativezoom
     # Generate table with min max tile coordinates for all zoomlevels
         tile.tminmax = list(range(0, self.tmaxz + 1))
         tile.tsize = list(range(0, self.tmaxz + 1))
