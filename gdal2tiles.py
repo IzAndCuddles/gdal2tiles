@@ -502,6 +502,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
         
         self.init_resampling()
         
+        tile = Tile()
         # User specified zoom levels
         if self.options.zoom:
             minmax = self.options.zoom.split('-',1)
@@ -524,7 +525,8 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
             print("Output:", self.output)
             print("Cache: %s MB" % (gdal.GetCacheMax() / 1024 / 1024))
             print('')
-
+            
+            
     def optparse_init(self):
         """Prepare the option parser for input (argv)"""
         
@@ -720,7 +722,7 @@ gdal2tiles temp.vrt""" % self.input )
                 
                 if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
                     
-                    self.image_warping(out_data,in_ds, in_nodata, i, in_srs_wkt)
+                    out_data=self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
                         
             else:
                 self.error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system." )
@@ -790,12 +792,15 @@ gdal2tiles temp.vrt""" % self.input )
         #
         # Calculating ranges for tiles in different zoom levels
         #
-        self.tile_range(out_data,profile,tile,in_srs,in_srs_wkt,srs4326,isepsg4326)
+        profile=self.tile_range(out_data,tile,in_srs,in_srs_wkt,srs4326,isepsg4326)
+        
+        return out_data, profile
         
         
         
-    def image_warping(self,out_data, in_ds, in_nodata, i, in_srs_wkt):
+    def image_warping(self, in_ds, in_nodata, i, in_srs_wkt):
         # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
+        out_data=OutData()
         out_data.out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
     # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
         if self.options.verbose:
@@ -858,8 +863,10 @@ gdal2tiles temp.vrt""" % self.input )
                 open("tiles1.vrt", "w").write(s)
         s = '''
     '''
+        return out_data
 
-    def tile_range(self,out_data,profile,tile,in_srs,in_srs_wkt,srs4326,isepsg4326):
+    def tile_range(self,out_data,tile,in_srs,in_srs_wkt,srs4326,isepsg4326):
+        profile = Profile()
         if self.options.profile == 'mercator':
             self.tile_range_mercator(profile,out_data,tile)
         if self.options.profile == 'geodetic':
@@ -883,9 +890,9 @@ gdal2tiles temp.vrt""" % self.input )
                         east, north = ct.TransformPoint(east, north)[:2]
                     return south, west, north, east
 
-                self.tileswne = rastertileswne
+                profile.tileswne = rastertileswne
             else:
-                self.tileswne = lambda x, y, z: (0,0,0,0)
+                profile.tileswne = lambda x, y, z: (0,0,0,0)
         
     
     def tile_range_raster(self,out_data,tile):
@@ -2148,11 +2155,11 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
 
 
 
-def process(config,profile,out_data,tile):
+def process(config,tile):
     """The main processing function, runs all the main steps of processing"""
     
     # Opening and preprocessing of the input file
-    config.open_input(profile,tile,out_data)
+    out_data,profile=config.open_input(tile)
     
     # Generation of main metadata files and HTML viewers
     generate_metadata(config,profile,tile,out_data)
@@ -2171,8 +2178,6 @@ def process(config,profile,out_data,tile):
 if __name__=='__main__':
     argv = gdal.GeneralCmdLineProcessor( sys.argv )
     if argv:
-        profile=Profile()
-        out_data=OutData()
-        tile=Tile()
+        tile=None
         c1 = Configuration(argv[1:],tile)
-        process(c1,profile,out_data,tile)
+        process(c1,tile)
