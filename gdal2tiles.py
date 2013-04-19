@@ -927,12 +927,12 @@ gdal2tiles temp.vrt""" % self.input )
         
     # TODO: Maps crossing 180E (Alaska?)
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
-        if self.tminz == None:
-            self.tminz = profile.geodetic.ZoomForPixelSize(out_data.out_gt[1] * max(out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize) / float(TILESIZE))
+        if tile.tminz == None:
+            tile.tminz = profile.geodetic.ZoomForPixelSize(out_data.out_gt[1] * max(out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize) / float(TILESIZE))
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
-        if self.tmaxz == None:
-            self.tmaxz = profile.geodetic.ZoomForPixelSize(out_data.out_gt[1])
-        if self.options.verbose:
+        if tile.tmaxz == None:
+            tile.tmaxz = profile.geodetic.ZoomForPixelSize(out_data.out_gt[1])
+        if tile.options.verbose:
             print "Bounds (latlong):", tile.ominx, tile.ominy, tile.omaxx, tile.omaxy
 
 
@@ -2059,8 +2059,8 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
 
 def read_tile(tz, config, y, x):
     dsquerytile = gdal.Open(os.path.join(config.output, str(tz + 1), str(x), "%s.%s" % (y, config.tileext)), gdal.GA_ReadOnly)
-    read_tile = dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE)
-    return read_tile
+    tile_r = dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE)
+    return tile_r
 
 def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,config,tile,profile):
     dsquery = config.mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands) # TODO: fill the null value
