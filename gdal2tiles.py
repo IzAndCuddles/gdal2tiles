@@ -714,7 +714,7 @@ gdal2tiles temp.vrt""" % self.input )
             self.out_srs = in_srs
         
         # Are the reference systems the same? Reproject if necessary.
-        
+        out_data=None
         if self.options.profile in ('mercator', 'geodetic'):
                         
             if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
@@ -734,6 +734,7 @@ gdal2tiles temp.vrt""" % self.input )
                 print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize, out_data.out_ds.RasterCount))
         
         if not out_data.out_ds:
+            out_data=OutData()
             out_data.out_ds = in_ds
 
         #
@@ -943,7 +944,7 @@ gdal2tiles temp.vrt""" % self.input )
     # Get the maximal zoom level (closest possible zoom level up on the resolution of raster)
         if tile.tmaxz == None:
             tile.tmaxz = profile.geodetic.ZoomForPixelSize(out_data.out_gt[1])
-        if tile.options.verbose:
+        if self.options.verbose:
             print "Bounds (latlong):", tile.ominx, tile.ominy, tile.omaxx, tile.omaxy
 
 
@@ -1991,7 +1992,7 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
         kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
         if not config.options.resume or not os.path.exists(kmlfilename):
             f = open(kmlfilename, 'w')
-            f.write(generate_kml(config.tileext,TILESIZE,config.options,config.tileswne,tx, ty, tz))
+            f.write(generate_kml(config.tileext,TILESIZE,config.options,profile.tileswne,tx, ty, tz))
             f.close()
 
 
