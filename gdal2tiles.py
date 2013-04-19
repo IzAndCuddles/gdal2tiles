@@ -441,7 +441,22 @@ class OutData(object):
 
 class Configuration (object):
 
-    def __init__(self,arguments,tile):
+
+    def create_tile(self):
+        tile = Tile()
+    # User specified zoom levels
+        if self.options.zoom:
+            minmax = self.options.zoom.split('-', 1)
+            minmax.extend([''])
+            min_, max_ = minmax[:2]
+            tile.tminz = int(min_)
+            if max:
+                tile.tmaxz = int(max_)
+            else:
+                tile.tmaxz = int(min_)
+        return tile
+
+    def __init__(self,arguments):
         
         self.stopped = False
         self.input = None
@@ -501,18 +516,6 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
         self.resampling = None
         
         self.init_resampling()
-        
-        tile = Tile()
-        # User specified zoom levels
-        if self.options.zoom:
-            minmax = self.options.zoom.split('-',1)
-            minmax.extend([''])
-            min_, max_ = minmax[:2]
-            tile.tminz = int(min_)
-            if max:
-                tile.tmaxz = int(max_)
-            else:
-                tile.tmaxz = int(min_) 
         
         # KML generation
         self.kml = self.options.kml
@@ -613,7 +616,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
                 self.resampling = gdal.GRA_Lanczos
 
 
-    def open_input(self,profile,tile,out_data):
+    def open_input(self,tile):
         """Initialization of the input raster, reprojection if necessary"""
         
         gdal.AllRegister()
@@ -893,6 +896,7 @@ gdal2tiles temp.vrt""" % self.input )
                 profile.tileswne = rastertileswne
             else:
                 profile.tileswne = lambda x, y, z: (0,0,0,0)
+        return profile
         
     
     def tile_range_raster(self,out_data,tile):
@@ -1755,7 +1759,7 @@ def generate_metadata(config,profile,tile,out_data):
 
     if config.options.profile == 'mercator':
         
-        south, west = profile.mercator.MetersToLatLon( tile.ominx, tile.ominy)
+        south, west = profile.mercator.MetersToLatLon(tile.ominx, tile.ominy)
         north, east = profile.mercator.MetersToLatLon(tile.omaxx, tile.omaxy)
         south, west = max(-85.05112878, south), max(-180.0, west)
         north, east = min(85.05112878, north), min(180.0, east)
@@ -2178,6 +2182,6 @@ def process(config,tile):
 if __name__=='__main__':
     argv = gdal.GeneralCmdLineProcessor( sys.argv )
     if argv:
-        tile=None
-        c1 = Configuration(argv[1:],tile)
+        c1 = Configuration(argv[1:])
+        tile=c1.create_tile()
         process(c1,tile)
