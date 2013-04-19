@@ -2056,6 +2056,12 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
 
 
 
+
+def read_tile(tz, config, y, x):
+    dsquerytile = gdal.Open(os.path.join(config.output, str(tz + 1), str(x), "%s.%s" % (y, config.tileext)), gdal.GA_ReadOnly)
+    read_tile = dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE)
+    return read_tile
+
 def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,config,tile,profile):
     dsquery = config.mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands) # TODO: fill the null value
     #for i in range(1, tilebands+1):
@@ -2069,7 +2075,7 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,config,tile,profi
         for x in range(2 * tx, 2 * tx + 2):
             minx, miny, maxx, maxy = tile.tminmax[tz + 1]
             if x >= minx and x <= maxx and y >= miny and y <= maxy:
-                dsquerytile = gdal.Open(os.path.join(config.output, str(tz + 1), str(x), "%s.%s" % (y, config.tileext)), gdal.GA_ReadOnly)
+                tile_r = read_tile(tz, config, y, x)
                 if (ty == 0 and y == 1) or (ty != 0 and (y % (2 * ty)) != 0):
                     tileposy = 0
                 else:
@@ -2080,7 +2086,7 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,config,tile,profi
                     tileposx = TILESIZE
                 else:
                     tileposx = 0
-                dsquery.WriteRaster(tileposx, tileposy, TILESIZE, TILESIZE, dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE), band_list=list(range(1, tilebands + 1)))
+                dsquery.WriteRaster(tileposx, tileposy, TILESIZE, TILESIZE,tile_r, band_list=list(range(1, tilebands + 1)))
                 children.append([x, y, tz + 1])
     
     scale_query_to_tile(config.options,config.tiledriver,config.resampling,dsquery, dstile, tilefilename)
