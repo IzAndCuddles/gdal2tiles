@@ -474,7 +474,7 @@ class Configuration (object):
         self.options, args = parser.parse_args(arguments)
         
         if not args:
-            self.error("No input file specified")
+            error("No input file specified")
             
         # POSTPROCESSING OF PARSED ARGUMENTS:
         # Workaround for old versions of GDAL
@@ -482,7 +482,7 @@ class Configuration (object):
             if (self.options.verbose and self.options.resampling == 'near') or gdal.TermProgress_nocb:
                 pass
         except:
-            self.error("This version of GDAL is not supported. Please upgrade to 1.6+.")
+            error("This version of GDAL is not supported. Please upgrade to 1.6+.")
         
         # Test output directory, if it doesn't exist
         if os.path.isdir(args[-1]) or ( len(args) > 1 and not os.path.exists(args[-1])):
@@ -492,7 +492,7 @@ class Configuration (object):
         # More files on the input not directly supported yet
         
         if (len(args) > 1):
-            self.error("Processing of several input files is not supported.",
+            error("Processing of several input files is not supported.",
             """Please first use a tool like gdal_vrtmerge.py or gdal_merge.py on the files:
 gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
             # TODO: Call functions from gdal_vrtmerge.py directly
@@ -595,13 +595,13 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
                     if gdal.RegenerateOverview:
                         pass
                 except:
-                    self.error("'average' resampling algorithm is not available.", "Please use -r 'near' argument or upgrade to newer version of GDAL.")
+                    error("'average' resampling algorithm is not available.", "Please use -r 'near' argument or upgrade to newer version of GDAL.")
             elif self.options.resampling == 'antialias':
                 try:
                     if numpy:
                         pass
                 except:
-                    self.error("'antialias' resampling algorithm is not available.", "Install PIL (Python Imaging Library) and numpy.")
+                    error("'antialias' resampling algorithm is not available.", "Install PIL (Python Imaging Library) and numpy.")
             elif self.options.resampling == 'near':
                 self.resampling = gdal.GRA_NearestNeighbour
                 self.querysize_c = TILESIZE
@@ -644,15 +644,15 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
 
         if not in_ds:
             # Note: GDAL prints the ERROR message too
-            self.error("It is not possible to open the input file '%s'." % self.input )
+            error("It is not possible to open the input file '%s'." % self.input )
             
         # Read metadata from the input file
         if in_ds.RasterCount == 0:
-            self.error( "Input file '%s' has no raster band" % self.input )
+            error( "Input file '%s' has no raster band" % self.input )
             
         if in_ds.GetRasterBand(1).GetRasterColorTable():
             # TODO: Process directly paletted dataset by generating VRT in memory
-            self.error( "Please convert this file to RGB/RGBA and run gdal2tiles on the result.",
+            error( "Please convert this file to RGB/RGBA and run gdal2tiles on the result.",
             """From paletted file you can create RGBA file (temp.vrt) by:
 gdal_translate -of vrt -expand rgba %s temp.vrt
 then run:
@@ -700,7 +700,7 @@ gdal2tiles temp.vrt""" % self.input )
                 in_srs = osr.SpatialReference()
                 in_srs.ImportFromWkt(in_srs_wkt)
             #elif self.options.profile != 'raster':
-            #   self.error("There is no spatial reference system info included in the input file.","You should run gdal2tiles with --s_srs EPSG:XXXX or similar.")
+            #   error("There is no spatial reference system info included in the input file.","You should run gdal2tiles with --s_srs EPSG:XXXX or similar.")
 
         # Spatial Reference System of tiles
         
@@ -718,7 +718,7 @@ gdal2tiles temp.vrt""" % self.input )
         if self.options.profile in ('mercator', 'geodetic'):
                         
             if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
-                self.error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.",
+                error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.",
                 "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
                 
             if in_srs:
@@ -728,7 +728,7 @@ gdal2tiles temp.vrt""" % self.input )
                     out_data=self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
                         
             else:
-                self.error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system." )
+                error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system." )
 
             if out_data.out_ds and self.options.verbose:
                 print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize, out_data.out_ds.RasterCount))
@@ -773,11 +773,11 @@ gdal2tiles temp.vrt""" % self.input )
         # MAPTILER - COMMENTED
         #if out_data.out_gt[1] != (-1 * out_data.out_gt[5]) and self.options.profile != 'raster':
             # TODO: Process corectly coordinates with are have swichted Y axis (display in OpenLayers too)
-            #self.error("Size of the pixel in the output differ for X and Y axes.")
+            #error("Size of the pixel in the output differ for X and Y axes.")
             
         # Report error in case rotation/skew is in geotransform (possible only in 'raster' profile)
         if (out_data.out_gt[2], out_data.out_gt[4]) != (0,0):
-            self.error("Georeference of the raster contains rotation or skew. Such raster is not supported. Please use gdalwarp first.")
+            error("Georeference of the raster contains rotation or skew. Such raster is not supported. Please use gdalwarp first.")
             # TODO: Do the warping in this case automaticaly
 
         #
