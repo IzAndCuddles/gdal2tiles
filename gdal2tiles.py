@@ -36,6 +36,7 @@
 #******************************************************************************
 
 import sys
+import concurrent.futures
 
 try:
     from osgeo import gdal
@@ -438,6 +439,20 @@ class OutData(object):
         self.dataBandsCount=None
         self.out_gt=None
 
+def def_out_srs(profile, in_srs):
+    out_srs = osr.SpatialReference()
+    if profile == 'mercator':
+        out_srs.ImportFromEPSG(900913)
+    elif profile == 'geodetic':
+        out_srs.ImportFromEPSG(4326)
+    else:
+        out_srs = in_srs
+    return out_srs
+
+def init_drv(tiledriver):
+    out_drv = gdal.GetDriverByName(tiledriver)
+    mem_drv = gdal.GetDriverByName('MEM')
+    return out_drv,mem_drv
 
 class Configuration (object):
 
@@ -623,8 +638,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
 
         # Initialize necessary GDAL drivers
         
-        self.out_drv = gdal.GetDriverByName( self.tiledriver )
-        self.mem_drv = gdal.GetDriverByName( 'MEM' )
+        self.out_drv,self.mem_drv=init_drv(self.tiledriver)
         
         if not self.out_drv:
             raise Exception("The '%s' driver was not found, is it available in this GDAL build?", self.tiledriver)
@@ -704,14 +718,7 @@ gdal2tiles temp.vrt""" % self.input )
 
         # Spatial Reference System of tiles
         
-        self.out_srs = osr.SpatialReference()
-
-        if self.options.profile == 'mercator':
-            self.out_srs.ImportFromEPSG(900913)
-        elif self.options.profile == 'geodetic':
-            self.out_srs.ImportFromEPSG(4326)
-        else:
-            self.out_srs = in_srs
+        self.out_srs=def_out_srs(self.options.profile,in_srs)
         
         # Are the reference systems the same? Reproject if necessary.
         
@@ -1995,8 +2002,6 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
             f = open(kmlfilename, 'w')
             f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
             f.close()
-
-
 
 def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,tiledriver,options,output,querysize_c,resampling,kml,tminmax,tmaxz,tsize,nativezoom,out_ds,dataBandsCount,alphaband,tileswne,mercator,geodetic,stopped):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
