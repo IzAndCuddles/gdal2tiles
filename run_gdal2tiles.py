@@ -1,6 +1,7 @@
 import os
 from time import clock
 
+BRANCH = 'structure'
 CFG_NUM_ITERATIONS = 1
 THIS_DIR = os.path.dirname( __file__ )
 
@@ -12,26 +13,29 @@ chemin = os.path.join( THIS_DIR, "test_image" )
 img = os.path.join( THIS_DIR, "image_test_miniature", "image.vrt" )
 
 stats = os.path.join( THIS_DIR, "stats.csv" )
-with open(stats, 'w') as f:
 
+
+with open(stats, 'a') as f:
+    f.write(BRANCH)
     for p in profile_list:
         for r in resampling_list:
             name=p+'-'+r
+            t_list=[]
             if (p,r) != ('raster', 'antialias'):
-                f.write(name)
                 print name
                 for i in range (CFG_NUM_ITERATIONS):
                     path=os.path.join(chemin, p+'_'+r)
-                    if not os.path.isdir(path):
+                    if not os.path.exists(path):
                         os.makedirs(path)
                     os.chdir(path)
-                    cmd="gdal2tiles.py -p %s -r %s %s" % (p, r, img)
+                    cmd=r"%s\gdal2tiles.py -p %s -r %s %s" % (THIS_DIR,p, r, img)
                     t0=clock()
                     os.system(cmd)
                     t1=clock()
                     t=t1-t0
-                    f.write(' '+str(t))
+                    t_list[len(t_list):]=[t]
                     print t
-                f.write('\r\n')
+                f.write(' '+str(min(t_list)))
             else:
                 print name+' is not available.'
+    f.write('\n')
