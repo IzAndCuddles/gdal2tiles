@@ -36,7 +36,6 @@
 #******************************************************************************
 
 import sys
-import concurrent.futures
 
 try:
     from osgeo import gdal
