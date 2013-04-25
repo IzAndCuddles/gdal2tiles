@@ -678,7 +678,6 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
         # Open the input file
         
         if self.input:
-            #self.in_ds = gdal.Open(self.input, gdal.GA_ReadOnly)
             in_ds = gdal.Open(self.input, gdal.GA_ReadOnly)
         else:
             raise Exception("No input file was specified")
@@ -728,13 +727,11 @@ gdal2tiles temp.vrt""" % self.input )
         # Spatial Reference System of the input raster
 
 
-        #self.in_srs = None -- remplacee par in_srs car utilisee que dans open_input
         in_srs=None
         
         if self.options.s_srs:
             in_srs = osr.SpatialReference()
             in_srs.SetFromUserInput(self.options.s_srs)
-            #self.in_srs_wkt = in_srs.ExportToWkt() -- remplacee par in_srs_wkt car utilisee que dans open_input
             in_srs_wkt = in_srs.ExportToWkt()
         else:
             in_srs_wkt = in_ds.GetProjection()
@@ -1958,11 +1955,11 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
         wb = (wx,wy,wxsize,wysize)
     return rb, wb, querysize
 
-def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config,out_data,tile):
+def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile):
     # Tile dataset in memory
     rx, ry, rxsize, rysize = rb
     wx, wy, wxsize, wysize = wb
-    dstile = config.mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
+    dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
     data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, out_data.dataBandsCount + 1)))
     alpha = out_data.alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
     if TILESIZE == querysize:
@@ -1970,23 +1967,31 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
         dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
         dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
     else:
-        dsquery = config.mem_drv.Create('', querysize, querysize, tilebands)
+        dsquery = mem_drv.Create('', querysize, querysize, tilebands)
         # TODO: fill the null value in case a tile without alpha is produced (now only png tiles are supported)
         #for i in range(1, tilebands+1):
         #   dsquery.GetRasterBand(1).Fill(tilenodata)
         dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
         dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
-        scale_query_to_tile(config.options,config.tiledriver,config.resampling,dsquery, dstile, tilefilename)
+        scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
         del dsquery
     # Big ReadRaster query in memory scaled to the tilesize - all but 'near' algo
     # Note: For source drivers based on WaveLet compression (JPEG2000, ECW, MrSID)
     # the ReadRaster function returns high-quality raster (not ugly nearest neighbour)
     # TODO: Use directly 'near' for WaveLet files
     del data
-    if config.options.resampling != 'antialias':
+    if options.resampling != 'antialias':
         # Write a copy of tile to png/jpg
-        config.out_drv.CreateCopy(tilefilename, dstile, strict=0)
+        out_drv.CreateCopy(tilefilename, dstile, strict=0)
     del dstile
+    
+    
+def pickle_generate_base_tile(arguments_picklables, tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile):
+    mem_drv, out_drv = init_drv(tiledriver)
+    ds=0
+    out_data=0
+    generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile)
+
 
 def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,tiledriver,options,output,querysize_c,resampling,kml,tminmax,tmaxz,tsize,nativezoom,out_ds,dataBandsCount,alphaband,tileswne,mercator,geodetic,stopped):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
@@ -2052,7 +2057,8 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
             # Query is in 'nearest neighbour' but can be bigger in then the tilesize
             # We scale down the query to the tilesize by supplied algorithm.
 
-            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
+            pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile)
+            #generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
                 
             # Create a KML file for this tile.
             if config.kml:
