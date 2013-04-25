@@ -630,6 +630,37 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
                 self.resampling = gdal.GRA_Lanczos
 
 
+
+    def init_out_data(self, in_ds, in_nodata, i, in_srs, in_srs_wkt):
+        out_data = OutData()
+        out_data.out_ds = in_ds
+        if self.options.profile in ('mercator', 'geodetic'):
+            out_ds = None
+            if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
+                error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.", "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
+            if in_srs:
+                if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
+                    out_ds = self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
+            else:
+                error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system.")
+            if out_ds is not None:
+                out_data.out_ds = out_ds
+                if self.options.verbose:
+                    print "Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_ds.RasterXSize, out_ds.RasterYSize, out_ds.RasterCount)
+        #
+        # Here we should have a raster (out_ds) in the correct Spatial Reference system
+        #
+        # Get alpha band (either directly or from NODATA value)
+        out_data.alphaband = out_data.out_ds.GetRasterBand(1).GetMaskBand()
+        if (out_data.alphaband.GetMaskFlags() & gdal.GMF_ALPHA) or out_data.out_ds.RasterCount == 4 or out_data.out_ds.RasterCount == 2: # TODO: Better test for alpha band in the dataset
+            out_data.dataBandsCount = out_data.out_ds.RasterCount - 1
+        else:
+            out_data.dataBandsCount = out_data.out_ds.RasterCount
+        # Read the georeference
+        out_data.out_gt = out_data.out_ds.GetGeoTransform()
+        return out_data
+
+
     def open_input(self,tile):
         """Initialization of the input raster, reprojection if necessary"""
         
@@ -721,59 +752,7 @@ gdal2tiles temp.vrt""" % self.input )
         
         # Are the reference systems the same? Reproject if necessary.
         
-        out_data = OutData()
-        out_data.out_ds = in_ds
-        
-        if self.options.profile in ('mercator', 'geodetic'):
-            
-            out_ds = None
-                      
-            if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
-                error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.",
-                "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
-                
-            if in_srs:
-                
-                if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
-                    
-                    out_ds = self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
-                        
-            else:
-                error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system." )
-
-            if out_ds is not None:
-                
-                out_data.out_ds = out_ds
-                
-                if self.options.verbose:
-                    print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_ds.RasterXSize, out_ds.RasterYSize, out_ds.RasterCount))
-                
-        #
-        # Here we should have a raster (out_ds) in the correct Spatial Reference system
-        #
-
-        # Get alpha band (either directly or from NODATA value)
-        out_data.alphaband = out_data.out_ds.GetRasterBand(1).GetMaskBand()
-        if (out_data.alphaband.GetMaskFlags() & gdal.GMF_ALPHA) or out_data.out_ds.RasterCount==4 or out_data.out_ds.RasterCount==2:
-            # TODO: Better test for alpha band in the dataset
-            out_data.dataBandsCount = out_data.out_ds.RasterCount - 1
-        else:
-            out_data.dataBandsCount = out_data.out_ds.RasterCount
-
-        # KML test
-        #self.isepsg4326 = False : on le remplace par isepsg4326 car var utilisee uniquement dans open_input
-        isepsg4326 = False
-        srs4326 = osr.SpatialReference()
-        srs4326.ImportFromEPSG(4326)
-        if self.out_srs and srs4326.ExportToProj4() == self.out_srs.ExportToProj4():
-            self.kml = True
-            isepsg4326 = True
-            if self.options.verbose:
-                print("KML autotest OK!")
-
-        # Read the georeference 
-
-        out_data.out_gt = out_data.out_ds.GetGeoTransform()
+        out_data = self.init_out_data(in_ds, in_nodata, i, in_srs, in_srs_wkt)
             
         #originX, originY = out_data.out_gt[0], out_data.out_gt[3]
         #pixelSize = out_data.out_gt[1] # = out_data.out_gt[5]
@@ -789,6 +768,17 @@ gdal2tiles temp.vrt""" % self.input )
         if (out_data.out_gt[2], out_data.out_gt[4]) != (0,0):
             error("Georeference of the raster contains rotation or skew. Such raster is not supported. Please use gdalwarp first.")
             # TODO: Do the warping in this case automaticaly
+
+        # KML test
+        #self.isepsg4326 = False : on le remplace par isepsg4326 car var utilisee uniquement dans open_input
+        isepsg4326 = False
+        srs4326 = osr.SpatialReference()
+        srs4326.ImportFromEPSG(4326)
+        if self.out_srs and srs4326.ExportToProj4() == self.out_srs.ExportToProj4():
+            self.kml = True
+            isepsg4326 = True
+            if self.options.verbose:
+                print("KML autotest OK!")
 
         #
         # Here we expect: pixel is square, no rotation on the raster
