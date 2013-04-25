@@ -721,8 +721,13 @@ gdal2tiles temp.vrt""" % self.input )
         
         # Are the reference systems the same? Reproject if necessary.
         
+        out_data = OutData()
+        out_data.out_ds = in_ds
+        
         if self.options.profile in ('mercator', 'geodetic'):
-                        
+            
+            out_ds = None
+                      
             if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
                 error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.",
                 "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
@@ -731,19 +736,18 @@ gdal2tiles temp.vrt""" % self.input )
                 
                 if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
                     
-                    out_data=self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
+                    out_ds = self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
                         
             else:
                 error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system." )
 
-            if out_data.out_ds and self.options.verbose:
-                print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_data.out_ds.RasterXSize, out_data.out_ds.RasterYSize, out_data.out_ds.RasterCount))
-        else:
-            out_data=OutData()
-        
-        if not out_data.out_ds:
-            out_data.out_ds = in_ds
-
+            if out_ds is not None:
+                
+                out_data.out_ds = out_ds
+                
+                if self.options.verbose:
+                    print("Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_ds.RasterXSize, out_ds.RasterYSize, out_ds.RasterCount))
+                
         #
         # Here we should have a raster (out_ds) in the correct Spatial Reference system
         #
@@ -811,18 +815,17 @@ gdal2tiles temp.vrt""" % self.input )
         
     def image_warping(self, in_ds, in_nodata, i, in_srs_wkt):
         # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
-        out_data=OutData()
-        out_data.out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
+        out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
     # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
         if self.options.verbose:
             print "Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')"
-            out_data.out_ds.GetDriver().CreateCopy("tiles.vrt", out_data.out_ds)
+            out_ds.GetDriver().CreateCopy("tiles.vrt", out_ds)
     # Note: in_srs and in_srs_wkt contain still the non-warped reference system!!!
     # Correction of AutoCreateWarpedVRT for NODATA values
         if in_nodata != []:
             import tempfile
             tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
-            out_data.out_ds.GetDriver().CreateCopy(tempfilename, out_data.out_ds) # open as a text file
+            out_ds.GetDriver().CreateCopy(tempfilename, out_ds) # open as a text file
             s = open(tempfilename).read() # Add the warping options
             s = s.replace("""<GDALWarpOptions>""", """<GDALWarpOptions>
           <Option name="INIT_DEST">NO_DATA</Option>
@@ -838,35 +841,35 @@ gdal2tiles temp.vrt""" % self.input )
             </BandMapping>""" % ((i + 1), (i + 1), in_nodata[i], in_nodata[i])) # Or rewrite to white by: , 255 ))
             
             # save the corrected VRT
-            open(tempfilename, "w").write(s) # open by GDAL as out_data.out_ds
-            out_data.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
+            open(tempfilename, "w").write(s) # open by GDAL as out_ds
+            out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
     # delete the temporary file
             os.unlink(tempfilename) # set NODATA_VALUE metadata
-            out_data.out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (in_nodata[0], in_nodata[1], in_nodata[2]))
+            out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (in_nodata[0], in_nodata[1], in_nodata[2]))
             if self.options.verbose:
                 print "Modified warping result saved into 'tiles1.vrt'"
                 open("tiles1.vrt", "w").write(s)
 
     # Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
     # equivalent of gdalwarp -dstalpha
-        if in_nodata == [] and out_data.out_ds.RasterCount in [1, 3]:
+        if in_nodata == [] and out_ds.RasterCount in [1, 3]:
             import tempfile
             tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
-            out_data.out_ds.GetDriver().CreateCopy(tempfilename, out_data.out_ds) # open as a text file
+            out_ds.GetDriver().CreateCopy(tempfilename, out_ds) # open as a text file
             s = open(tempfilename).read() # Add the warping options
             s = s.replace("""<BlockXSize>""", 
                 """<VRTRasterBand dataType="Byte" band="%i" subClass="VRTWarpedRasterBand">
         <ColorInterp>Alpha</ColorInterp>
       </VRTRasterBand>
-      <BlockXSize>""" % (out_data.out_ds.RasterCount + 1))
+      <BlockXSize>""" % (out_ds.RasterCount + 1))
             s = s.replace("""</GDALWarpOptions>""", 
                 """<DstAlphaBand>%i</DstAlphaBand>
-      </GDALWarpOptions>""" % (out_data.out_ds.RasterCount + 1))
+      </GDALWarpOptions>""" % (out_ds.RasterCount + 1))
             s = s.replace("""</WorkingDataType>""", """</WorkingDataType>
         <Option name="INIT_DEST">0</Option>""")
             # save the corrected VRT
-            open(tempfilename, "w").write(s) # open by GDAL as out_data.out_ds
-            out_data.out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
+            open(tempfilename, "w").write(s) # open by GDAL as out_ds
+            out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
     # delete the temporary file
             os.unlink(tempfilename)
             if self.options.verbose:
@@ -874,7 +877,7 @@ gdal2tiles temp.vrt""" % self.input )
                 open("tiles1.vrt", "w").write(s)
         s = '''
     '''
-        return out_data
+        return out_ds
 
     def tile_range(self,out_data,tile,in_srs,in_srs_wkt,srs4326,isepsg4326):
         profile = Profile()
