@@ -1958,7 +1958,7 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
         wb = (wx,wy,wxsize,wysize)
     return rb, wb, querysize
 
-def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config,profile,out_data,tile):
+def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config,out_data,tile):
     # Tile dataset in memory
     rx, ry, rxsize, rysize = rb
     wx, wy, wxsize, wysize = wb
@@ -1987,13 +1987,6 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
         # Write a copy of tile to png/jpg
         config.out_drv.CreateCopy(tilefilename, dstile, strict=0)
     del dstile
-# Create a KML file for this tile.
-    if config.kml:
-        kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
-        if not config.options.resume or not os.path.exists(kmlfilename):
-            f = open(kmlfilename, 'w')
-            f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
-            f.close()
 
 def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,tiledriver,options,output,querysize_c,resampling,kml,tminmax,tmaxz,tsize,nativezoom,out_ds,dataBandsCount,alphaband,tileswne,mercator,geodetic,stopped):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
@@ -2059,8 +2052,16 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
             # Query is in 'nearest neighbour' but can be bigger in then the tilesize
             # We scale down the query to the tilesize by supplied algorithm.
 
-            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config,profile,out_data,tile)
+            generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
                 
+            # Create a KML file for this tile.
+            if config.kml:
+                kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
+                if not config.options.resume or not os.path.exists(kmlfilename):
+                    f = open(kmlfilename, 'w')
+                    f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
+                    f.close()
+            
             if not config.options.verbose:
                 progressbar( ti / float(tcount) )
 
