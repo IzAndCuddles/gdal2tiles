@@ -603,7 +603,6 @@ class Configuration (object):
         self.output = None
         
         # Tile format
-        #self.tilesize = 256 -- utilisation de la constante TILESIZE
         self.tiledriver = 'PNG'
         self.tileext = 'png'
         
@@ -849,7 +848,6 @@ gdal2tiles temp.vrt""" % self.input )
             # TODO: Do the warping in this case automaticaly
 
         # KML test
-        #self.isepsg4326 = False : on le remplace par isepsg4326 car var utilisee uniquement dans open_input
         isepsg4326 = False
         srs4326 = osr.SpatialReference()
         srs4326.ImportFromEPSG(4326)
@@ -890,7 +888,6 @@ gdal2tiles temp.vrt""" % self.input )
             self.tile_range_raster(out_data,tile)
             # Function which generates SWNE in LatLong for given tile
             if self.kml and self.in_srs_wkt:
-                #self.ct = osr.CoordinateTransformation(in_srs, srs4326) self.ct utilise que ici, changement pour ct
                 ct = osr.CoordinateTransformation(self.in_srs, srs4326)
                 def rastertileswne(x,y,z):
                     pixelsizex = (2**(self.tmaxz-z) * out_data.out_gt[1]) # X-pixel size in level
@@ -936,7 +933,7 @@ gdal2tiles temp.vrt""" % self.input )
 
 
     def tile_range_geodetic(self,profile,out_data,tile):
-        #self.geodetic = GlobalGeodetic() # from globalmaptiles.py
+    # from globalmaptiles.py
     # Function which generates SWNE in LatLong for given tile
         profile.tileswne = profile.geodetic.TileLatLonBounds
     # Generate table with min max tile coordinates for all zoomlevels
@@ -961,7 +958,7 @@ gdal2tiles temp.vrt""" % self.input )
 
 
     def tile_range_mercator(self,profile,out_data,tile):
-        #self.mercator = GlobalMercator() # from globalmaptiles.py
+    # from globalmaptiles.py
     # Function which generates SWNE in LatLong for given tile
         profile.tileswne = profile.mercator.TileLatLonBounds
     # Generate table with min max tile coordinates for all zoomlevels
