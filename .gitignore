@@ -1,1 +1,7 @@
-test_image/
+.*
+test_image/
+image_test_miniature/
+image/
+*.pyc
+profile *
+stats.*
