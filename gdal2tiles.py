@@ -501,6 +501,64 @@ def init_out_data(s_srs,input,profile,verbose):
     out_data.out_gt = out_data.out_ds.GetGeoTransform()
     return out_data
 
+
+def correct_ACW_nodata(in_nodata,verbose, out_ds):
+    import tempfile
+    tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
+    out_ds.GetDriver().CreateCopy(tempfilename, out_ds) # open as a text file
+    s = open(tempfilename).read() # Add the warping options
+    s = s.replace("""<GDALWarpOptions>""", """<GDALWarpOptions>
+          <Option name="INIT_DEST">NO_DATA</Option>
+          <Option name="UNIFIED_SRC_NODATA">YES</Option>""")
+    # replace BandMapping tag for NODATA bands....
+    for i in range(len(in_nodata)):
+        s = s.replace("""<BandMapping src="%i" dst="%i"/>""" % ((i + 1), (i + 1)), 
+            """<BandMapping src="%i" dst="%i">
+  <SrcNoDataReal>%i</SrcNoDataReal>
+  <SrcNoDataImag>0</SrcNoDataImag>
+  <DstNoDataReal>%i</DstNoDataReal>
+  <DstNoDataImag>0</DstNoDataImag>
+</BandMapping>""" % ((i + 1), (i + 1), in_nodata[i], in_nodata[i])) # Or rewrite to white by: , 255 ))
+    
+# save the corrected VRT
+    open(tempfilename, "w").write(s) # open by GDAL as out_ds
+    out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
+# delete the temporary file
+    os.unlink(tempfilename) # set NODATA_VALUE metadata
+    out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (in_nodata[0], in_nodata[1], in_nodata[2]))
+    if verbose:
+        print "Modified warping result saved into 'tiles1.vrt'"
+        open("tiles1.vrt", "w").write(s)
+    return out_ds
+
+
+
+def correct_ACW_mono_rgb(verbose, out_ds):
+    import tempfile
+    tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
+    out_ds.GetDriver().CreateCopy(tempfilename, out_ds) # open as a text file
+    s = open(tempfilename).read() # Add the warping options
+    s = s.replace("""<BlockXSize>""", 
+        """<VRTRasterBand dataType="Byte" band="%i" subClass="VRTWarpedRasterBand">
+        <ColorInterp>Alpha</ColorInterp>
+      </VRTRasterBand>
+      <BlockXSize>""" % (out_ds.RasterCount + 1))
+    s = s.replace("""</GDALWarpOptions>""", 
+        """<DstAlphaBand>%i</DstAlphaBand>
+      </GDALWarpOptions>""" % (out_ds.RasterCount + 1))
+    s = s.replace("""</WorkingDataType>""", """</WorkingDataType>
+        <Option name="INIT_DEST">0</Option>""")
+# save the corrected VRT
+    open(tempfilename, "w").write(s) # open by GDAL as out_ds
+    out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
+# delete the temporary file
+    os.unlink(tempfilename)
+    if verbose:
+        print "Modified -dstalpha warping result saved into 'tiles1.vrt'"
+        open("tiles1.vrt", "w").write(s)
+    return out_ds
+
+
 class Configuration (object):
 
     def create_tile(self):
@@ -800,71 +858,25 @@ gdal2tiles temp.vrt""" % self.input )
         profile=self.tile_range(out_data,tile,srs4326,isepsg4326)
         
         return out_data, profile
-        
-        
-        
-    def image_warping(self):
+
+
+
+    def image_warping(self,in_ds,in_srs_wkt,out_srs,verbose,in_nodata):
         # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
-        out_ds = gdal.AutoCreateWarpedVRT(self.in_ds, self.in_srs_wkt, self.out_srs.ExportToWkt())
+        out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, out_srs.ExportToWkt())
     # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
-        if self.options.verbose:
+        if verbose:
             print "Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')"
             out_ds.GetDriver().CreateCopy("tiles.vrt", out_ds)
     # Note: self.in_srs and self.in_srs_wkt contain still the non-warped reference system!!!
     # Correction of AutoCreateWarpedVRT for NODATA values
-        if self.in_nodata != []:
-            import tempfile
-            tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
-            out_ds.GetDriver().CreateCopy(tempfilename, out_ds) # open as a text file
-            s = open(tempfilename).read() # Add the warping options
-            s = s.replace("""<GDALWarpOptions>""", """<GDALWarpOptions>
-          <Option name="INIT_DEST">NO_DATA</Option>
-          <Option name="UNIFIED_SRC_NODATA">YES</Option>""")
-            # replace BandMapping tag for NODATA bands....
-            for i in range(len(self.in_nodata)):
-                s = s.replace("""<BandMapping src="%i" dst="%i"/>""" % ((i + 1), (i + 1)), 
-                    """<BandMapping src="%i" dst="%i">
-              <SrcNoDataReal>%i</SrcNoDataReal>
-              <SrcNoDataImag>0</SrcNoDataImag>
-              <DstNoDataReal>%i</DstNoDataReal>
-              <DstNoDataImag>0</DstNoDataImag>
-            </BandMapping>""" % ((i + 1), (i + 1), self.in_nodata[i], self.in_nodata[i])) # Or rewrite to white by: , 255 ))
-            
-            # save the corrected VRT
-            open(tempfilename, "w").write(s) # open by GDAL as out_ds
-            out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
-    # delete the temporary file
-            os.unlink(tempfilename) # set NODATA_VALUE metadata
-            out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (self.in_nodata[0], self.in_nodata[1], self.in_nodata[2]))
-            if self.options.verbose:
-                print "Modified warping result saved into 'tiles1.vrt'"
-                open("tiles1.vrt", "w").write(s)
+        if in_nodata != []:
+            out_ds = correct_ACW_nodata(out_ds)
 
     # Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
     # equivalent of gdalwarp -dstalpha
-        if self.in_nodata == [] and out_ds.RasterCount in [1, 3]:
-            import tempfile
-            tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
-            out_ds.GetDriver().CreateCopy(tempfilename, out_ds) # open as a text file
-            s = open(tempfilename).read() # Add the warping options
-            s = s.replace("""<BlockXSize>""", 
-                """<VRTRasterBand dataType="Byte" band="%i" subClass="VRTWarpedRasterBand">
-        <ColorInterp>Alpha</ColorInterp>
-      </VRTRasterBand>
-      <BlockXSize>""" % (out_ds.RasterCount + 1))
-            s = s.replace("""</GDALWarpOptions>""", 
-                """<DstAlphaBand>%i</DstAlphaBand>
-      </GDALWarpOptions>""" % (out_ds.RasterCount + 1))
-            s = s.replace("""</WorkingDataType>""", """</WorkingDataType>
-        <Option name="INIT_DEST">0</Option>""")
-            # save the corrected VRT
-            open(tempfilename, "w").write(s) # open by GDAL as out_ds
-            out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
-    # delete the temporary file
-            os.unlink(tempfilename)
-            if self.options.verbose:
-                print "Modified -dstalpha warping result saved into 'tiles1.vrt'"
-                open("tiles1.vrt", "w").write(s)
+        if in_nodata == [] and out_ds.RasterCount in [1, 3]:
+            out_ds = correct_ACW_mono_rgb(out_ds)
         s = '''
     '''
         return out_ds
