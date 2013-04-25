@@ -469,7 +469,7 @@ def init_drv(tiledriver):
     mem_drv = gdal.GetDriverByName('MEM')
     return out_drv,mem_drv
 
-def init_out_data(s_srs,input,profile,verbose):
+def init_out_data(s_srs,input,profile,verbose,in_nodata):
     in_srs,in_srs_wkt=def_in_srs(s_srs,input)
     out_srs=def_out_srs(profile,in_srs)
     in_ds=gdal.Open(input, gdal.GA_ReadOnly)
@@ -481,7 +481,7 @@ def init_out_data(s_srs,input,profile,verbose):
             error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.", "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
         if in_srs:
             if (in_srs.ExportToProj4() != out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
-                out_ds = image_warping(in_ds, in_nodata, in_srs_wkt)
+                out_ds = image_warping(in_ds,in_srs_wkt,out_srs,verbose,in_nodata)
         else:
             error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system.")
         if out_ds is not None:
@@ -556,6 +556,27 @@ def correct_ACW_mono_rgb(verbose, out_ds):
     if verbose:
         print "Modified -dstalpha warping result saved into 'tiles1.vrt'"
         open("tiles1.vrt", "w").write(s)
+    return out_ds
+
+
+def image_warping(in_ds,in_srs_wkt,out_srs,verbose,in_nodata):
+    # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
+    out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, out_srs.ExportToWkt())
+# TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
+    if verbose:
+        print "Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')"
+        out_ds.GetDriver().CreateCopy("tiles.vrt", out_ds)
+# Note: self.in_srs and self.in_srs_wkt contain still the non-warped reference system!!!
+# Correction of AutoCreateWarpedVRT for NODATA values
+    if in_nodata != []:
+        out_ds = correct_ACW_nodata(in_nodata,verbose, out_ds)
+
+# Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
+# equivalent of gdalwarp -dstalpha
+    if in_nodata == [] and out_ds.RasterCount in [1, 3]:
+        out_ds = correct_ACW_mono_rgb(verbose,out_ds)
+    s = '''
+'''
     return out_ds
 
 
@@ -799,7 +820,7 @@ gdal2tiles temp.vrt""" % self.input )
         # Spatial Reference System of the input raster
 
 
-        self.in_srs,self.in_srs_wkt = def_in_srs()
+        self.in_srs,self.in_srs_wkt = def_in_srs(self.options.s_srs,self.input)
         
             #elif self.options.profile != 'raster':
             #   error("There is no spatial reference system info included in the input file.","You should run gdal2tiles with --s_srs EPSG:XXXX or similar.")
@@ -810,7 +831,7 @@ gdal2tiles temp.vrt""" % self.input )
         
         # Are the reference systems the same? Reproject if necessary.
         
-        out_data = init_out_data(self)
+        out_data = init_out_data(self.options.s_srs,self.input,self.options.profile,self.options.verbose,self.in_nodata)
             
         #originX, originY = out_data.out_gt[0], out_data.out_gt[3]
         #pixelSize = out_data.out_gt[1] # = out_data.out_gt[5]
@@ -858,28 +879,6 @@ gdal2tiles temp.vrt""" % self.input )
         profile=self.tile_range(out_data,tile,srs4326,isepsg4326)
         
         return out_data, profile
-
-
-
-    def image_warping(self,in_ds,in_srs_wkt,out_srs,verbose,in_nodata):
-        # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
-        out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, out_srs.ExportToWkt())
-    # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
-        if verbose:
-            print "Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')"
-            out_ds.GetDriver().CreateCopy("tiles.vrt", out_ds)
-    # Note: self.in_srs and self.in_srs_wkt contain still the non-warped reference system!!!
-    # Correction of AutoCreateWarpedVRT for NODATA values
-        if in_nodata != []:
-            out_ds = correct_ACW_nodata(out_ds)
-
-    # Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
-    # equivalent of gdalwarp -dstalpha
-        if in_nodata == [] and out_ds.RasterCount in [1, 3]:
-            out_ds = correct_ACW_mono_rgb(out_ds)
-        s = '''
-    '''
-        return out_ds
 
     def tile_range(self,out_data,tile,srs4326,isepsg4326):
         profile = Profile()
@@ -2001,10 +2000,10 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
     del dstile
     
     
-def pickle_generate_base_tile(arguments_picklables, tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile):
-    mem_drv, out_drv = init_drv(tiledriver)
-    ds=0
-    out_data=0
+def pickle_generate_base_tile(tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,input,in_nodata):
+    out_drv,mem_drv = init_drv(tiledriver)
+    out_data=init_out_data(options.s_srs,input,options.profile,options.verbose,in_nodata)
+    ds=out_data.out_ds
     generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile)
 
 
@@ -2072,7 +2071,7 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
             # Query is in 'nearest neighbour' but can be bigger in then the tilesize
             # We scale down the query to the tilesize by supplied algorithm.
 
-            pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile)
+            pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,config.input,config.in_nodata)
             #generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
                 
             # Create a KML file for this tile.
@@ -2085,8 +2084,6 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
             
             if not config.options.verbose:
                 progressbar( ti / float(tcount) )
-
-
 
 
 def read_tile(tz, config, y, x):
