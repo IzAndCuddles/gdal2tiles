@@ -631,7 +631,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
 
 
 
-    def init_out_data(self, in_ds, in_nodata, i, in_srs, in_srs_wkt):
+    def init_out_data(self, in_ds, in_nodata, in_srs, in_srs_wkt):
         out_data = OutData()
         out_data.out_ds = in_ds
         if self.options.profile in ('mercator', 'geodetic'):
@@ -640,7 +640,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
                 error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.", "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
             if in_srs:
                 if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
-                    out_ds = self.image_warping(in_ds, in_nodata, i, in_srs_wkt)
+                    out_ds = self.image_warping(in_ds, in_nodata, in_srs_wkt)
             else:
                 error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system.")
             if out_ds is not None:
@@ -752,7 +752,7 @@ gdal2tiles temp.vrt""" % self.input )
         
         # Are the reference systems the same? Reproject if necessary.
         
-        out_data = self.init_out_data(in_ds, in_nodata, i, in_srs, in_srs_wkt)
+        out_data = self.init_out_data(in_ds, in_nodata, in_srs, in_srs_wkt)
             
         #originX, originY = out_data.out_gt[0], out_data.out_gt[3]
         #pixelSize = out_data.out_gt[1] # = out_data.out_gt[5]
@@ -803,7 +803,7 @@ gdal2tiles temp.vrt""" % self.input )
         
         
         
-    def image_warping(self, in_ds, in_nodata, i, in_srs_wkt):
+    def image_warping(self, in_ds, in_nodata, in_srs_wkt):
         # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
         out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
     # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
