@@ -36,6 +36,7 @@
 #******************************************************************************
 
 import sys
+from multiprocessing import Process, Queue
 
 try:
     from osgeo import gdal
@@ -407,6 +408,34 @@ class GlobalGeodetic(object):
         "Returns bounds of the given tile in the SWNE form"
         b = self.TileBounds(tx, ty, zoom)
         return (b[1],b[0],b[3],b[2])
+
+
+def processTileJobs(q, s_srs, input, profile, verbose, in_nodata):
+
+    out_data = init_out_data(s_srs, input, profile, verbose, in_nodata)
+    job = q.get()
+    
+    while job is not MultiProcess.TERMINATE_PROCESS:
+        tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic = job
+        pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
+        job = q.get()
+        
+
+class MultiProcess(object):
+    
+    TERMINATE_PROCESS = object()
+    
+    def __init__(self, s_srs, input, profile, verbose, in_nodata):
+        self.q = Queue()
+        self.p = Process(target=processTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata))
+        self.p.start()
+        
+    def sendJob(self, tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
+        self.q.put((tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic))
+        
+    def finish(self):
+        self.q.put(MultiProcess.TERMINATE_PROCESS)
+        self.p.join()
 
 
 class Profile(object):
@@ -1997,10 +2026,17 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
     del dstile
     
     
-def pickle_generate_base_tile(tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,input,in_nodata):
+def pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
     out_drv,mem_drv = init_drv(tiledriver)
-    out_data=init_out_data(options.s_srs,input,options.profile,options.verbose,in_nodata)
     ds=out_data.out_ds
+    tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
+    
+    # Create directories for the tile
+    if not os.path.exists(os.path.dirname(tilefilename)):
+        os.makedirs(os.path.dirname(tilefilename))
+    
+    rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tile.tsize,out_data.out_ds,tile.nativezoom)
+
     generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile)
 
 
@@ -2040,35 +2076,22 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
     
     tz = tile.tmaxz
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
-        for tx in range(tminx, tmaxx+1):
+        
 
             if config.stopped:
                 break
-            ti += 1
-            tilefilename = os.path.join(config.output, str(tz), str(tx), "%s.%s" % (ty, config.tileext))
-            if config.options.verbose:
-                print(ti,'/',tcount, tilefilename) #, "( TileMapService: z / x / y )"
-
-            if config.options.resume and os.path.exists(tilefilename):
-                if config.options.verbose:
-                    print("Tile generation skiped because of --resume")
-                else:
-                    progressbar( ti / float(tcount) )
-                continue
-
-            # Create directories for the tile
-            if not os.path.exists(os.path.dirname(tilefilename)):
-                os.makedirs(os.path.dirname(tilefilename))
-
-            rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,config.options,profile.mercator,profile.geodetic,tile.tsize,out_data.out_ds,tile.nativezoom)
-
-            if config.options.verbose:
-                print("\tReadRaster Extent: ", rb, wb)
                 
             # Query is in 'nearest neighbour' but can be bigger in then the tilesize
-            # We scale down the query to the tilesize by supplied algorithm.
+            # We scale down the query to the tilesize by supplied algorithm.          
 
-            pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,config.input,config.in_nodata)
+            multiprocess = MultiProcess(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata)
+            
+            for tx in range(tminx, tmaxx+1):
+                multiprocess.sendJob(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
+            for i in range(1):
+                multiprocess.finish()
+            
+            #pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,config.input,config.in_nodata)
             #generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
                 
             # Create a KML file for this tile.
