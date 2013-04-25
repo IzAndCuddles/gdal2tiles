@@ -438,6 +438,22 @@ class OutData(object):
         self.dataBandsCount=None
         self.out_gt=None
 
+def def_in_srs(s_srs,input):
+    in_ds=gdal.Open(input, gdal.GA_ReadOnly)
+    in_srs = None
+    if s_srs:
+        in_srs = osr.SpatialReference()
+        in_srs.SetFromUserInput(s_srs)
+        in_srs_wkt = in_srs.ExportToWkt()
+    else:
+        in_srs_wkt = in_ds.GetProjection()
+        if not in_srs_wkt and in_ds.GetGCPCount() != 0:
+            in_srs_wkt = in_ds.GetGCPProjection()
+        if in_srs_wkt:
+            in_srs = osr.SpatialReference()
+            in_srs.ImportFromWkt(in_srs_wkt)
+    return in_srs,in_srs_wkt
+
 def def_out_srs(profile, in_srs):
     out_srs = osr.SpatialReference()
     if profile == 'mercator':
@@ -453,8 +469,39 @@ def init_drv(tiledriver):
     mem_drv = gdal.GetDriverByName('MEM')
     return out_drv,mem_drv
 
-class Configuration (object):
+def init_out_data(s_srs,input,profile,verbose):
+    in_srs,in_srs_wkt=def_in_srs(s_srs,input)
+    out_srs=def_out_srs(profile,in_srs)
+    in_ds=gdal.Open(input, gdal.GA_ReadOnly)
+    out_data = OutData()
+    out_data.out_ds = in_ds
+    if profile in ('mercator', 'geodetic'):
+        out_ds = None
+        if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
+            error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.", "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
+        if in_srs:
+            if (in_srs.ExportToProj4() != out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
+                out_ds = image_warping(in_ds, in_nodata, in_srs_wkt)
+        else:
+            error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system.")
+        if out_ds is not None:
+            out_data.out_ds = out_ds
+            if verbose:
+                print "Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_ds.RasterXSize, out_ds.RasterYSize, out_ds.RasterCount)
+    #
+    # Here we should have a raster (out_ds) in the correct Spatial Reference system
+    #
+    # Get alpha band (either directly or from NODATA value)
+    out_data.alphaband = out_data.out_ds.GetRasterBand(1).GetMaskBand()
+    if (out_data.alphaband.GetMaskFlags() & gdal.GMF_ALPHA) or out_data.out_ds.RasterCount == 4 or out_data.out_ds.RasterCount == 2: # TODO: Better test for alpha band in the dataset
+        out_data.dataBandsCount = out_data.out_ds.RasterCount - 1
+    else:
+        out_data.dataBandsCount = out_data.out_ds.RasterCount
+    # Read the georeference
+    out_data.out_gt = out_data.out_ds.GetGeoTransform()
+    return out_data
 
+class Configuration (object):
 
     def create_tile(self):
         tile = Tile()
@@ -629,38 +676,6 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
             elif self.options.resampling == 'lanczos':
                 self.resampling = gdal.GRA_Lanczos
 
-
-
-    def init_out_data(self, in_ds, in_nodata, in_srs, in_srs_wkt):
-        out_data = OutData()
-        out_data.out_ds = in_ds
-        if self.options.profile in ('mercator', 'geodetic'):
-            out_ds = None
-            if (in_ds.GetGeoTransform() == (0.0, 1.0, 0.0, 0.0, 0.0, 1.0)) and (in_ds.GetGCPCount() == 0):
-                error("There is no georeference - neither affine transformation (worldfile) nor GCPs. You can generate only 'raster' profile tiles.", "Either gdal2tiles with parameter -p 'raster' or use another GIS software for georeference e.g. gdal_transform -gcp / -a_ullr / -a_srs")
-            if in_srs:
-                if (in_srs.ExportToProj4() != self.out_srs.ExportToProj4()) or (in_ds.GetGCPCount() != 0):
-                    out_ds = self.image_warping(in_ds, in_nodata, in_srs_wkt)
-            else:
-                error("Input file has unknown SRS.", "Use --s_srs ESPG:xyz (or similar) to provide source reference system.")
-            if out_ds is not None:
-                out_data.out_ds = out_ds
-                if self.options.verbose:
-                    print "Projected file:", "tiles.vrt", "( %sP x %sL - %s bands)" % (out_ds.RasterXSize, out_ds.RasterYSize, out_ds.RasterCount)
-        #
-        # Here we should have a raster (out_ds) in the correct Spatial Reference system
-        #
-        # Get alpha band (either directly or from NODATA value)
-        out_data.alphaband = out_data.out_ds.GetRasterBand(1).GetMaskBand()
-        if (out_data.alphaband.GetMaskFlags() & gdal.GMF_ALPHA) or out_data.out_ds.RasterCount == 4 or out_data.out_ds.RasterCount == 2: # TODO: Better test for alpha band in the dataset
-            out_data.dataBandsCount = out_data.out_ds.RasterCount - 1
-        else:
-            out_data.dataBandsCount = out_data.out_ds.RasterCount
-        # Read the georeference
-        out_data.out_gt = out_data.out_ds.GetGeoTransform()
-        return out_data
-
-
     def open_input(self,tile):
         """Initialization of the input raster, reprojection if necessary"""
         
@@ -678,22 +693,22 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
         # Open the input file
         
         if self.input:
-            in_ds = gdal.Open(self.input, gdal.GA_ReadOnly)
+            self.in_ds = gdal.Open(self.input, gdal.GA_ReadOnly)
         else:
             raise Exception("No input file was specified")
 
         if self.options.verbose:
-            print("Input file:", "( %sP x %sL - %s bands)" % (in_ds.RasterXSize, in_ds.RasterYSize, in_ds.RasterCount))
+            print("Input file:", "( %sP x %sL - %s bands)" % (self.in_ds.RasterXSize, self.in_ds.RasterYSize, self.in_ds.RasterCount))
 
-        if not in_ds:
+        if not self.in_ds:
             # Note: GDAL prints the ERROR message too
             error("It is not possible to open the input file '%s'." % self.input )
             
         # Read metadata from the input file
-        if in_ds.RasterCount == 0:
+        if self.in_ds.RasterCount == 0:
             error( "Input file '%s' has no raster band" % self.input )
             
-        if in_ds.GetRasterBand(1).GetRasterColorTable():
+        if self.in_ds.GetRasterBand(1).GetRasterColorTable():
             # TODO: Process directly paletted dataset by generating VRT in memory
             error( "Please convert this file to RGB/RGBA and run gdal2tiles on the result.",
             """From paletted file you can create RGBA file (temp.vrt) by:
@@ -702,54 +717,42 @@ then run:
 gdal2tiles temp.vrt""" % self.input )
 
         # Get NODATA value
-        #self.in_nodata = [] --- on le remplace par in_nodata car var utilisee que dans open_input
-        in_nodata = []
-        for i in range(1, in_ds.RasterCount+1):
-            if in_ds.GetRasterBand(i).GetNoDataValue() != None:
-                in_nodata.append( in_ds.GetRasterBand(i).GetNoDataValue() )
+        self.in_nodata = []
+        for i in range(1, self.in_ds.RasterCount+1):
+            if self.in_ds.GetRasterBand(i).GetNoDataValue() != None:
+                self.in_nodata.append( self.in_ds.GetRasterBand(i).GetNoDataValue() )
         if self.options.srcnodata:
             nds = list(map( float, self.options.srcnodata.split(',')))
-            if len(nds) < in_ds.RasterCount:
-                in_nodata = (nds * in_ds.RasterCount)[:in_ds.RasterCount]
+            if len(nds) < self.in_ds.RasterCount:
+                self.in_nodata = (nds * self.in_ds.RasterCount)[:self.in_ds.RasterCount]
             else:
-                in_nodata = nds
+                self.in_nodata = nds
 
         if self.options.verbose:
-            print("NODATA: %s" % in_nodata)
+            print("NODATA: %s" % self.in_nodata)
 
         #
-        # Here we should have RGBA input dataset opened in in_ds
+        # Here we should have RGBA input dataset opened in self.in_ds
         #
 
         if self.options.verbose:
-            print("Preprocessed file:", "( %sP x %sL - %s bands)" % (in_ds.RasterXSize, in_ds.RasterYSize, in_ds.RasterCount))
+            print("Preprocessed file:", "( %sP x %sL - %s bands)" % (self.in_ds.RasterXSize, self.in_ds.RasterYSize, self.in_ds.RasterCount))
 
         # Spatial Reference System of the input raster
 
 
-        in_srs=None
+        self.in_srs,self.in_srs_wkt = def_in_srs()
         
-        if self.options.s_srs:
-            in_srs = osr.SpatialReference()
-            in_srs.SetFromUserInput(self.options.s_srs)
-            in_srs_wkt = in_srs.ExportToWkt()
-        else:
-            in_srs_wkt = in_ds.GetProjection()
-            if not in_srs_wkt and in_ds.GetGCPCount() != 0:
-                in_srs_wkt = in_ds.GetGCPProjection()
-            if in_srs_wkt:
-                in_srs = osr.SpatialReference()
-                in_srs.ImportFromWkt(in_srs_wkt)
             #elif self.options.profile != 'raster':
             #   error("There is no spatial reference system info included in the input file.","You should run gdal2tiles with --s_srs EPSG:XXXX or similar.")
 
         # Spatial Reference System of tiles
         
-        self.out_srs=def_out_srs(self.options.profile,in_srs)
+        self.out_srs=def_out_srs(self.options.profile,self.in_srs)
         
         # Are the reference systems the same? Reproject if necessary.
         
-        out_data = self.init_out_data(in_ds, in_nodata, in_srs, in_srs_wkt)
+        out_data = init_out_data(self)
             
         #originX, originY = out_data.out_gt[0], out_data.out_gt[3]
         #pixelSize = out_data.out_gt[1] # = out_data.out_gt[5]
@@ -794,22 +797,22 @@ gdal2tiles temp.vrt""" % self.input )
         #
         # Calculating ranges for tiles in different zoom levels
         #
-        profile=self.tile_range(out_data,tile,in_srs,in_srs_wkt,srs4326,isepsg4326)
+        profile=self.tile_range(out_data,tile,srs4326,isepsg4326)
         
         return out_data, profile
         
         
         
-    def image_warping(self, in_ds, in_nodata, in_srs_wkt):
+    def image_warping(self):
         # Generation of VRT dataset in tile projection, default 'nearest neighbour' warping
-        out_ds = gdal.AutoCreateWarpedVRT(in_ds, in_srs_wkt, self.out_srs.ExportToWkt())
+        out_ds = gdal.AutoCreateWarpedVRT(self.in_ds, self.in_srs_wkt, self.out_srs.ExportToWkt())
     # TODO: HIGH PRIORITY: Correction of AutoCreateWarpedVRT according the max zoomlevel for correct direct warping!!!
         if self.options.verbose:
             print "Warping of the raster by AutoCreateWarpedVRT (result saved into 'tiles.vrt')"
             out_ds.GetDriver().CreateCopy("tiles.vrt", out_ds)
-    # Note: in_srs and in_srs_wkt contain still the non-warped reference system!!!
+    # Note: self.in_srs and self.in_srs_wkt contain still the non-warped reference system!!!
     # Correction of AutoCreateWarpedVRT for NODATA values
-        if in_nodata != []:
+        if self.in_nodata != []:
             import tempfile
             tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
             out_ds.GetDriver().CreateCopy(tempfilename, out_ds) # open as a text file
@@ -818,28 +821,28 @@ gdal2tiles temp.vrt""" % self.input )
           <Option name="INIT_DEST">NO_DATA</Option>
           <Option name="UNIFIED_SRC_NODATA">YES</Option>""")
             # replace BandMapping tag for NODATA bands....
-            for i in range(len(in_nodata)):
+            for i in range(len(self.in_nodata)):
                 s = s.replace("""<BandMapping src="%i" dst="%i"/>""" % ((i + 1), (i + 1)), 
                     """<BandMapping src="%i" dst="%i">
               <SrcNoDataReal>%i</SrcNoDataReal>
               <SrcNoDataImag>0</SrcNoDataImag>
               <DstNoDataReal>%i</DstNoDataReal>
               <DstNoDataImag>0</DstNoDataImag>
-            </BandMapping>""" % ((i + 1), (i + 1), in_nodata[i], in_nodata[i])) # Or rewrite to white by: , 255 ))
+            </BandMapping>""" % ((i + 1), (i + 1), self.in_nodata[i], self.in_nodata[i])) # Or rewrite to white by: , 255 ))
             
             # save the corrected VRT
             open(tempfilename, "w").write(s) # open by GDAL as out_ds
             out_ds = gdal.Open(tempfilename) #, gdal.GA_ReadOnly)
     # delete the temporary file
             os.unlink(tempfilename) # set NODATA_VALUE metadata
-            out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (in_nodata[0], in_nodata[1], in_nodata[2]))
+            out_ds.SetMetadataItem('NODATA_VALUES', '%i %i %i' % (self.in_nodata[0], self.in_nodata[1], self.in_nodata[2]))
             if self.options.verbose:
                 print "Modified warping result saved into 'tiles1.vrt'"
                 open("tiles1.vrt", "w").write(s)
 
     # Correction of AutoCreateWarpedVRT for Mono (1 band) and RGB (3 bands) files without NODATA:
     # equivalent of gdalwarp -dstalpha
-        if in_nodata == [] and out_ds.RasterCount in [1, 3]:
+        if self.in_nodata == [] and out_ds.RasterCount in [1, 3]:
             import tempfile
             tempfilename = tempfile.mktemp('-gdal2tiles.vrt')
             out_ds.GetDriver().CreateCopy(tempfilename, out_ds) # open as a text file
@@ -866,7 +869,7 @@ gdal2tiles temp.vrt""" % self.input )
     '''
         return out_ds
 
-    def tile_range(self,out_data,tile,in_srs,in_srs_wkt,srs4326,isepsg4326):
+    def tile_range(self,out_data,tile,srs4326,isepsg4326):
         profile = Profile()
         if self.options.profile == 'mercator':
             self.tile_range_mercator(profile,out_data,tile)
@@ -875,9 +878,9 @@ gdal2tiles temp.vrt""" % self.input )
         if self.options.profile == 'raster':
             self.tile_range_raster(out_data,tile)
             # Function which generates SWNE in LatLong for given tile
-            if self.kml and in_srs_wkt:
+            if self.kml and self.in_srs_wkt:
                 #self.ct = osr.CoordinateTransformation(in_srs, srs4326) self.ct utilise que ici, changement pour ct
-                ct = osr.CoordinateTransformation(in_srs, srs4326)
+                ct = osr.CoordinateTransformation(self.in_srs, srs4326)
                 def rastertileswne(x,y,z):
                     pixelsizex = (2**(self.tmaxz-z) * out_data.out_gt[1]) # X-pixel size in level
                     pixelsizey = (2**(self.tmaxz-z) * out_data.out_gt[1]) # Y-pixel size in level (usually -1*pixelsizex)
