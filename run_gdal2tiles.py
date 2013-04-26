@@ -1,7 +1,7 @@
 import os
 from time import clock
 
-BRANCH = 'structure'
+BRANCH = 'multiprocess(process=4)'
 CFG_NUM_ITERATIONS = 1
 THIS_DIR = os.path.dirname( __file__ )
 
