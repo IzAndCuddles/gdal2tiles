@@ -2079,34 +2079,33 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
     ti = 0
     
     tz = tile.tmaxz
+    
+    multiprocess = MultiProcess(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata)
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
         
+        if config.stopped:
+            break
+    
+        # Query is in 'nearest neighbour' but can be bigger in then the tilesize
+        # We scale down the query to the tilesize by supplied algorithm.          
 
-            if config.stopped:
-                break
-                
-            # Query is in 'nearest neighbour' but can be bigger in then the tilesize
-            # We scale down the query to the tilesize by supplied algorithm.          
-
-            multiprocess = MultiProcess(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata)
+        for tx in range(tminx, tmaxx+1):
+            multiprocess.sendJob(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
+        
+        #pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,config.input,config.in_nodata)
+        #generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
             
-            for tx in range(tminx, tmaxx+1):
-                multiprocess.sendJob(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
-            multiprocess.finish()
-            
-            #pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,config.input,config.in_nodata)
-            #generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
-                
-            # Create a KML file for this tile.
-            if config.kml:
-                kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
-                if not config.options.resume or not os.path.exists(kmlfilename):
-                    f = open(kmlfilename, 'w')
-                    f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
-                    f.close()
-            
-            if not config.options.verbose:
-                progressbar( ti / float(tcount) )
+        # Create a KML file for this tile.
+        if config.kml:
+            kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
+            if not config.options.resume or not os.path.exists(kmlfilename):
+                f = open(kmlfilename, 'w')
+                f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
+                f.close()
+        
+        if not config.options.verbose:
+            progressbar( ti / float(tcount) )
+    multiprocess.finish()
 
 
 def read_tile(tz, config, y, x):
