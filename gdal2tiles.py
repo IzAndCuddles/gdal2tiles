@@ -455,7 +455,7 @@ class MultiProcessO(object):
         self.q = Queue()
         self.process=[]
         for i in xrange(num_process):
-            p = Process(target=processOverviewTileJobs, args=(self.q))
+            p = Process(target=processOverviewTileJobs, args=(self.q,))
             p.start()
             self.process.append(p)
         
@@ -2133,10 +2133,20 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
     multiprocess.finish()
 
 
-def read_tile(tz, output,tileext, y, x):
+def read_tile(tz, output, tileext, y, x):
     dsquerytile = gdal.Open(os.path.join(output, str(tz + 1), str(x), "%s.%s" % (y, tileext)), gdal.GA_ReadOnly)
     tile_r = dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE)
     return tile_r
+
+def init_children(tz,ty,tx):
+    children = []
+    for y in range(2 * ty, 2 * ty + 2):
+        for x in range(2 * tx, 2 * tx + 2):
+            minx, miny, maxx, maxy = tile.tminmax[tz + 1]
+            if x >= minx and x <= maxx and y >= miny and y <= maxy:
+                children.append([x, y, tz + 1])
+    return children
+
 
 def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile):
     dsquery = mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands)
@@ -2147,13 +2157,13 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,o
     # TODO: Implement more clever walking on the tiles with cache functionality
     # probably walk should start with reading of four tiles from top left corner
     # Hilbert curve...
-    children = []
+    
 # Read the tiles and write them to query window
     for y in range(2 * ty, 2 * ty + 2):
         for x in range(2 * tx, 2 * tx + 2):
             minx, miny, maxx, maxy = tile.tminmax[tz + 1]
             if x >= minx and x <= maxx and y >= miny and y <= maxy:
-                tile_r = read_tile(tz, output,tileext, y, x)
+                tile_r = read_tile(tz, output, tileext, y, x)
                 if (ty == 0 and y == 1) or (ty != 0 and (y % (2 * ty)) != 0):
                     tileposy = 0
                 else:
@@ -2165,7 +2175,6 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,o
                 else:
                     tileposx = 0
                 dsquery.WriteRaster(tileposx, tileposy, TILESIZE, TILESIZE,tile_r, band_list=list(range(1, tilebands + 1)))
-                children.append([x, y, tz + 1])
     
     scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
     # Write a copy of tile to png/jpg
@@ -2174,7 +2183,6 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,o
         out_drv.CreateCopy(tilefilename, dstile, strict=0)
     if options.verbose:
         print "\tbuild from zoom", tz + 1, " tiles:", 2 * tx, 2 * ty, 2 * tx + 1, 2 * ty, 2 * tx, 2 * ty + 1, 2 * tx + 1, 2 * ty + 1 # Create a KML file for this tile.
-    return children
 
 
 def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
@@ -2183,8 +2191,7 @@ def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, 
     # Create directories for the tile
     if not os.path.exists(os.path.dirname(tilefilename)):
         os.makedirs(os.path.dirname(tilefilename))
-    children=generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
-    return children
+    generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
 
 def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,tiledriver,options,output,resampling,kml,tmaxz,tminz,tminmax,dataBandsCount,tileswne,stopped):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
@@ -2203,8 +2210,8 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
     ti = 0
     
     # querysize = TILESIZE * 2
-    
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
+        multiprocess=MultiProcessO()
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             for tx in range(tminx, tmaxx+1):
@@ -2212,12 +2219,14 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
                 if config.stopped:
                     break    
                 
-                children=pickle_generate_overview_tile(config.output,config.options,config.tiledriver,config.resampling,config.tileext, tile, tilebands, tz, ty, tx)
-                
+                multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx)
+               
                 if config.kml:
+                    children=init_children(tz, ty, tx)
                     f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
                     f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz, children))
                     f.close()
+        multiprocess.finish()
 
 
 
