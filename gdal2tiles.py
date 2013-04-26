@@ -415,7 +415,7 @@ def processTileJobs(q, s_srs, input, profile, verbose, in_nodata):
     out_data = init_out_data(s_srs, input, profile, verbose, in_nodata)
     job = q.get()
     
-    while job is not MultiProcess.TERMINATE_PROCESS:
+    while job !='TERMINATE':
         tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic = job
         pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
         job = q.get()
@@ -423,19 +423,23 @@ def processTileJobs(q, s_srs, input, profile, verbose, in_nodata):
 
 class MultiProcess(object):
     
-    TERMINATE_PROCESS = object()
+    NB_PROCESS=4
     
     def __init__(self, s_srs, input, profile, verbose, in_nodata):
         self.q = Queue()
-        self.p = Process(target=processTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata))
-        self.p.start()
+        self.process=[]
+        for i in range(MultiProcess.NB_PROCESS):
+            self.process.append(Process(target=processTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata)))
+            self.process[i].start()
         
     def sendJob(self, tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
         self.q.put((tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic))
         
     def finish(self):
-        self.q.put(MultiProcess.TERMINATE_PROCESS)
-        self.p.join()
+        for i in range(MultiProcess.NB_PROCESS):
+            self.q.put('TERMINATE')
+        for i in range(MultiProcess.NB_PROCESS):
+            self.process[i].join()
 
 
 class Profile(object):
@@ -2088,8 +2092,7 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
             
             for tx in range(tminx, tmaxx+1):
                 multiprocess.sendJob(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
-            for i in range(1):
-                multiprocess.finish()
+            multiprocess.finish()
             
             #pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,config.input,config.in_nodata)
             #generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
