@@ -37,7 +37,7 @@
 
 import sys
 from multiprocessing import Process, Queue
-
+from time import clock
 try:
     from osgeo import gdal
     from osgeo import osr
@@ -416,8 +416,9 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata):
     job = q.get()
     
     while job !='TERMINATE':
-        tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic = job
-        pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
+        tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic = job
+        for tx in lx:
+            pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
         job = q.get()
         
 
@@ -431,8 +432,8 @@ class MultiProcessB(object):
             p.start()
             self.process.append(p)
         
-    def sendJob(self, tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
-        self.q.put((tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic))
+    def sendJob(self, tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
+        self.q.put((tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic))
         
     def finish(self):
         for p in self.process:
@@ -2115,20 +2116,17 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
     
         # Query is in 'nearest neighbour' but can be bigger in then the tilesize
         # We scale down the query to the tilesize by supplied algorithm.          
-
-        for tx in range(tminx, tmaxx+1):
-            multiprocess.sendJob(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
-        
-        #pickle_generate_base_tile(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, tile,config.input,config.in_nodata)
-        #generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, config, out_data, tile)
+        lx=range(tminx,tmaxx+1)
+        multiprocess.sendJob(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
             
-        # Create a KML file for this tile.
-        if config.kml:
-            kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
-            if not config.options.resume or not os.path.exists(kmlfilename):
-                f = open(kmlfilename, 'w')
-                f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
-                f.close()
+        for tx in range(tminx, tmaxx+1):
+            # Create a KML file for this tile.
+            if config.kml:
+                kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
+                if not config.options.resume or not os.path.exists(kmlfilename):
+                    f = open(kmlfilename, 'w')
+                    f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
+                    f.close()
                 
     multiprocess.finish()
 
@@ -2214,6 +2212,8 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
         multiprocess=MultiProcessO()
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
+            
+            #lx=range(tminx,tmaxx+1)
             for tx in range(tminx, tmaxx+1):
                 
                 if config.stopped:
@@ -2239,12 +2239,16 @@ def process(config,tile):
     # Generation of main metadata files and HTML viewers
     generate_metadata(config,profile,tile,out_data)
     
+    t0=clock()
     # Generation of the lowest tiles
     generate_base_tiles(config,profile,tile,out_data)
-
+    t1=clock()
+    print t1-t0
+    t0=clock()
     # Generation of the overview tiles (higher in the pyramid)
     generate_overview_tiles(config,profile,tile,out_data)
-
+    t1=clock()
+    print t1-t0
 
 
 # =============================================================================
@@ -2255,4 +2259,7 @@ if __name__=='__main__':
     if argv:
         c1 = Configuration(argv[1:])
         tile=c1.create_tile()
+        t0=clock()
         process(c1,tile)
+        t1=clock()
+        print t1-t0
