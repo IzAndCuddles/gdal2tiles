@@ -472,6 +472,7 @@ class MultiProcessO(object):
         self.process=[]
         for i in xrange(num_process):
             p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, n))
+            p.daemon=True
             p.start()
             self.process.append(p)
         
