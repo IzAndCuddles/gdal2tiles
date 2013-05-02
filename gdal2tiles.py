@@ -410,7 +410,7 @@ class GlobalGeodetic(object):
         return (b[1],b[0],b[3],b[2])
 
 
-def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n, ncount):
+def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
 
     out_data = init_out_data(s_srs, input, profile, verbose, in_nodata)
     job = q.get()
@@ -419,60 +419,83 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n, ncou
         tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic = job
         for tx in lx:
             pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
-            n.value+=1
-            progressbarBaseTiles(i,n.value/float(ncount))
+            
+            n.get_lock().acquire()
+            n.value += 1
+            n.get_lock().release()
+            
         job = q.get()
         
 
 class MultiProcessB(object):
     
-    def __init__(self, s_srs, input, profile, verbose, in_nodata, n,ncount, num_process=4):
+    def __init__(self, s_srs, input, profile, verbose, in_nodata, n, num_process=4):
         self.q = Queue()
         self.process=[]
         for i in xrange(num_process):
-            p = Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, i, n, ncount))
+            p = Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, i, n))
             p.start()
             self.process.append(p)
         
     def sendJob(self, tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
         self.q.put((tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic))
         
-    def finish(self):
+    def finish(self,n,ncount):
+        
         for p in self.process:
             self.q.put('TERMINATE')
-        for p in self.process:
-            p.join()
+        
+        done = False
+        while not done:
+            alive_count = len(self.process)
+            for p in self.process:
+                p.join(1.0)
+                alive = p.is_alive()
+                if not alive:
+                    alive_count -= 1
+                progressbar(n.value/float(ncount))
+            
+            done = (alive_count == 0)
 
-def processOverviewTileJobs(q, i, z, zmax, n, ncount):
+def processOverviewTileJobs(q,n):
     job = q.get()
     
     while job !='TERMINATE':
         output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx = job
         pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
+        n.get_lock().acquire()
         n.value+=1
-        progressbarOverviewTiles(i, z, zmax, n.value/float(ncount))
+        n.get_lock().release()
         job = q.get()
 
 
 class MultiProcessO(object):
     
-    def __init__(self, z, zmax, n, ncount, num_process=4):
+    def __init__(self, n, num_process=4):
         self.q = Queue()
         self.process=[]
         for i in xrange(num_process):
-            p = Process(target=processOverviewTileJobs, args=(self.q, i, z, zmax, n, ncount))
+            p = Process(target=processOverviewTileJobs, args=(self.q, n))
             p.start()
             self.process.append(p)
         
     def sendJob(self, output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
         self.q.put((output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx))
         
-    def finish(self):
+    def finish(self,n,ncount):
         for p in self.process:
             self.q.put('TERMINATE')
-        for p in self.process:
-            p.join()
-
+        done = False
+        while not done:
+            alive_count = len(self.process)
+            for p in self.process:
+                p.join(1.0)
+                alive = p.is_alive()
+                if not alive:
+                    alive_count -= 1
+                progressbar(n.value/float(ncount))
+            
+            done = (alive_count == 0)
 
 class Profile(object):
     
@@ -1065,21 +1088,9 @@ def error(msg, details = "" ):
     sys.exit(0)
     
 
-def progressbarBaseTiles(i, complete = 0.0):
+def progressbar(complete = 0.0):
     """Print progressbar for float value 0..1"""
-    if complete==1:
-        print '100 - done.'
-    else:
-        if i==3:
-            gdal.TermProgress_nocb(complete)
-
-def progressbarOverviewTiles(i,z,zmax,complete=0.0):
-    """Print progressbar for float value 0..1"""
-    if complete==1:
-        print '100 - done.'
-    else:
-        if i==3 and z==zmax:
-            gdal.TermProgress_nocb(complete)
+    gdal.TermProgress_nocb(complete)
 
 def stop(stopped):
     """Stop the rendering immediately"""
@@ -2121,7 +2132,7 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
     tz = tile.tmaxz
     
     ti=Value('i',0)
-    multiprocess = MultiProcessB(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti,tcount)
+    multiprocess = MultiProcessB(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
         
         if config.stopped:
@@ -2142,7 +2153,7 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
                     f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
                     f.close()
                     
-    multiprocess.finish()      
+    multiprocess.finish(ti,tcount)      
 
 
 def read_tile(tz, output, tileext, y, x):
@@ -2223,7 +2234,7 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
     
     # querysize = TILESIZE * 2
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
-        multiprocess=MultiProcessO(tz,tile.tmaxz-1,ti,tcount)
+        multiprocess=MultiProcessO(ti)
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             
@@ -2240,7 +2251,7 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
                     f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
                     f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz, children))
                     f.close()
-        multiprocess.finish()
+        multiprocess.finish(ti,tcount)
 
 
 
