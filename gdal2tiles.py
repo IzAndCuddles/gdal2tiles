@@ -36,7 +36,7 @@
 #******************************************************************************
 
 import sys
-from multiprocessing import Process, Queue, Value
+import multiprocessing
 from time import clock
 try:
     from osgeo import gdal
@@ -419,21 +419,19 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
         tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic = job
         for tx in lx:
             pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
-            
-            n.get_lock().acquire()
-            n.value += 1
-            n.get_lock().release()
+            n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
             
         job = q.get()
         
 
 class MultiProcessB(object):
     
-    def __init__(self, s_srs, input, profile, verbose, in_nodata, n, num_process=4):
-        self.q = Queue()
+    def __init__(self, s_srs, input, profile, verbose, in_nodata, n, num_process=multiprocessing.cpu_count()):
+        self.q = multiprocessing.Queue()
         self.process=[]
         for i in xrange(num_process):
-            p = Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, i, n))
+            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, i, n))
+            p.daemon=True
             p.start()
             self.process.append(p)
         
@@ -463,19 +461,17 @@ def processOverviewTileJobs(q,n):
     while job !='TERMINATE':
         output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx = job
         pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
-        n.get_lock().acquire()
-        n.value+=1
-        n.get_lock().release()
+        n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
         job = q.get()
 
 
 class MultiProcessO(object):
     
-    def __init__(self, n, num_process=4):
-        self.q = Queue()
+    def __init__(self, n, num_process=multiprocessing.cpu_count()):
+        self.q = multiprocessing.Queue()
         self.process=[]
         for i in xrange(num_process):
-            p = Process(target=processOverviewTileJobs, args=(self.q, n))
+            p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, n))
             p.start()
             self.process.append(p)
         
@@ -686,7 +682,7 @@ class Configuration (object):
 
     def __init__(self,arguments):
         
-        self.stopped = False
+        self.stopped = False # TODO : refaire methode stop
         self.input = None
         self.output = None
         
@@ -1066,8 +1062,8 @@ gdal2tiles temp.vrt""" % self.input )
             tile.tmaxz = profile.mercator.ZoomForPixelSize(out_data.out_gt[1])
         if self.options.verbose:
             print "Bounds (latlong):", profile.mercator.MetersToLatLon(tile.ominx, tile.ominy), profile.mercator.MetersToLatLon(tile.omaxx, tile.omaxy)
-            print 'MinZoomLevel:', self.tminz
-            print "MaxZoomLevel:", self.tmaxz, "(", profile.mercator.Resolution(self.tmaxz), ")"
+            print 'MinZoomLevel:', tile.tminz
+            print "MaxZoomLevel:", tile.tmaxz, "(", profile.mercator.Resolution(tile.tmaxz), ")"
 
 
 
@@ -1091,10 +1087,6 @@ def error(msg, details = "" ):
 def progressbar(complete = 0.0):
     """Print progressbar for float value 0..1"""
     gdal.TermProgress_nocb(complete)
-
-def stop(stopped):
-    """Stop the rendering immediately"""
-    stopped = True
 
 
 # FONCTIONS METADATAS
@@ -2097,7 +2089,7 @@ def pickle_generate_base_tile(out_data,tiledriver, options, resampling, tileband
     generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile)
 
 
-def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,tiledriver,options,output,querysize_c,resampling,kml,tminmax,tmaxz,tsize,nativezoom,out_ds,dataBandsCount,alphaband,tileswne,mercator,geodetic,stopped):
+def generate_base_tiles(config,profile,tile,out_data):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
     
     print("Generating Base Tiles:")
@@ -2131,10 +2123,11 @@ def generate_base_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,t
     
     tz = tile.tmaxz
     
-    ti=Value('i',0)
+    ti=multiprocessing.Value('f',0.0)
     multiprocess = MultiProcessB(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
         
+        #TODO : refaire methode stop
         if config.stopped:
             break
     
@@ -2216,7 +2209,7 @@ def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, 
         os.makedirs(os.path.dirname(tilefilename))
     generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
 
-def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tileext,tiledriver,options,output,resampling,kml,tmaxz,tminz,tminmax,dataBandsCount,tileswne,stopped):
+def generate_overview_tiles(config,profile,tile,out_data):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
     
     print("Generating Overview Tiles:")
@@ -2230,7 +2223,7 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         tcount += (1+abs(tmaxx-tminx)) * (1+abs(tmaxy-tminy))
 
-    ti = Value('d',0)
+    ti = multiprocessing.Value('f',0.0)
     
     # querysize = TILESIZE * 2
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
@@ -2241,7 +2234,7 @@ def generate_overview_tiles(config,profile,tile,out_data):#mem_drv,out_drv,tilee
             #lx=range(tminx,tmaxx+1)
             for tx in range(tminx, tmaxx+1):
                 
-                if config.stopped:
+                if config.stopped: # TODO : refaire methode stop
                     break    
                 
                 multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx)
