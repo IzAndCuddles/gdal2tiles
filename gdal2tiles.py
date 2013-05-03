@@ -423,38 +423,6 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
             
         job = q.get()
         
-
-class MultiProcessB(object):
-    
-    def __init__(self, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
-        self.q = multiprocessing.Queue()
-        self.process=[]
-        for i in xrange(num_process):
-            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, i, n))
-            p.daemon=True
-            p.start()
-            self.process.append(p)
-        
-    def sendJob(self, tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
-        self.q.put((tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic))
-        
-    def finish(self,n,ncount):
-        
-        for p in self.process:
-            self.q.put('TERMINATE')
-        
-        done = False
-        while not done:
-            alive_count = len(self.process)
-            for p in self.process:
-                p.join(1.0)
-                alive = p.is_alive()
-                if not alive:
-                    alive_count -= 1
-                progressbar(n.value/float(ncount))
-            
-            done = (alive_count == 0)
-
 def processOverviewTileJobs(q,n):
     job = q.get()
     
@@ -471,21 +439,29 @@ def processOverviewTileJobs(q,n):
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
         job = q.get()
 
-
-class MultiProcessO(object):
+class MultiProcess(object):
     
-    def __init__(self, n, num_process=NB_PROCESS):
-        self.q = multiprocessing.Queue()
+    def __init__(self):
+        self.q=multiprocessing.Queue()
         self.process=[]
+    
+    def processBase(self, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
+        for i in xrange(num_process):
+            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, i, n))
+            p.daemon=True
+            p.start()
+            self.process.append(p)
+            
+    def processOverview(self, n, num_process=NB_PROCESS):
         for i in xrange(num_process):
             p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, n))
             p.daemon=True
             p.start()
             self.process.append(p)
-        
-    def sendJob(self, output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
-        self.q.put((output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx))
-        
+            
+    def sendJob(self, job):
+        self.q.put(job)
+
     def finish(self,n,ncount):
         for p in self.process:
             self.q.put('TERMINATE')
@@ -498,8 +474,20 @@ class MultiProcessO(object):
                 if not alive:
                     alive_count -= 1
                 progressbar(n.value/float(ncount))
-            
             done = (alive_count == 0)
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 class Profile(object):
     
@@ -2133,7 +2121,8 @@ def generate_base_tiles(config,profile,tile,out_data):
     tz = tile.tmaxz
     
     ti=multiprocessing.Value('f',0.0)
-    multiprocess = MultiProcessB(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)
+    multiprocess = MultiProcess()
+    multiprocess.processBase(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
         
         #TODO : refaire methode stop
@@ -2141,7 +2130,7 @@ def generate_base_tiles(config,profile,tile,out_data):
         # Query is in 'nearest neighbour' but can be bigger in then the tilesize
         # We scale down the query to the tilesize by supplied algorithm.          
         lx=range(tminx,tmaxx+1)
-        multiprocess.sendJob(config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
+        multiprocess.sendJob((config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic))
         
         
         if config.kml:
@@ -2235,7 +2224,8 @@ def generate_overview_tiles(config,profile,tile,out_data):
     
     # querysize = TILESIZE * 2
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
-        multiprocess=MultiProcessO(ti)
+        multiprocess=MultiProcess()
+        multiprocess.processOverview(ti)
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             
@@ -2245,10 +2235,10 @@ def generate_overview_tiles(config,profile,tile,out_data):
                     
                     # TODO : refaire methode stop  
                     
-                    multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx)
+                    multiprocess.sendJob((config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx))
             else:
                 lx=range(tminx,tmaxx+1)
-                multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx)
+                multiprocess.sendJob((config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx))
                 
             if config.kml:
                 for tx in range(tminx, tmaxx+1):
