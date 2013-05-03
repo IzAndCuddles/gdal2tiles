@@ -101,7 +101,7 @@ Class is available under the open-source GDAL license (www.gdal.org).
 
 MAXZOOMLEVEL = 32
 TILESIZE = 256
-
+NB_PROCESS=multiprocessing.cpu_count()
 
 
 class GlobalMercator(object):
@@ -426,7 +426,7 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
 
 class MultiProcessB(object):
     
-    def __init__(self, s_srs, input, profile, verbose, in_nodata, n, num_process=multiprocessing.cpu_count()):
+    def __init__(self, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
         self.q = multiprocessing.Queue()
         self.process=[]
         for i in xrange(num_process):
@@ -467,7 +467,7 @@ def processOverviewTileJobs(q,n):
 
 class MultiProcessO(object):
     
-    def __init__(self, n, num_process=multiprocessing.cpu_count()):
+    def __init__(self, n, num_process=NB_PROCESS):
         self.q = multiprocessing.Queue()
         self.process=[]
         for i in xrange(num_process):
@@ -2232,14 +2232,19 @@ def generate_overview_tiles(config,profile,tile,out_data):
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             
-            #lx=range(tminx,tmaxx+1)
-            for tx in range(tminx, tmaxx+1):
+            #if tmaxy-tminy<NB_PROCESS:
+            
+                for tx in range(tminx, tmaxx+1):
+                    
+                    if config.stopped: # TODO : refaire methode stop
+                        break    
+                    
+                    multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx)
+            #else:
+            #    lx=range(tminx,tmaxx+1)
+            #    multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx)
                 
-                if config.stopped: # TODO : refaire methode stop
-                    break    
-                
-                multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx)
-               
+            #for tx in range(tminx, tmaxx+1):
                 if config.kml:
                     children=init_children(tz, ty, tx)
                     f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
