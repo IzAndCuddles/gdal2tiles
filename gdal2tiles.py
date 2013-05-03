@@ -459,9 +459,16 @@ def processOverviewTileJobs(q,n):
     job = q.get()
     
     while job !='TERMINATE':
-        output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx = job
-        pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
-        n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
+        output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, lx = job
+        try:
+            iterator = iter(lx)
+        except TypeError:
+            tx=lx
+            lx=list()
+            lx.append(tx)
+        for tx in lx:
+            pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
+            n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
         job = q.get()
 
 
@@ -2046,34 +2053,35 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
     return rb, wb, querysize
 
 def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile):
-    # Tile dataset in memory
-    rx, ry, rxsize, rysize = rb
-    wx, wy, wxsize, wysize = wb
-    dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
-    data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, out_data.dataBandsCount + 1)))
-    alpha = out_data.alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
-    if TILESIZE == querysize:
-        # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
-        dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
-        dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
-    else:
-        dsquery = mem_drv.Create('', querysize, querysize, tilebands)
-        # TODO: fill the null value in case a tile without alpha is produced (now only png tiles are supported)
-        #for i in range(1, tilebands+1):
-        #   dsquery.GetRasterBand(1).Fill(tilenodata)
-        dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
-        dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
-        scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
-        del dsquery
-    # Big ReadRaster query in memory scaled to the tilesize - all but 'near' algo
-    # Note: For source drivers based on WaveLet compression (JPEG2000, ECW, MrSID)
-    # the ReadRaster function returns high-quality raster (not ugly nearest neighbour)
-    # TODO: Use directly 'near' for WaveLet files
-    del data
-    if options.resampling != 'antialias':
-        # Write a copy of tile to png/jpg
-        out_drv.CreateCopy(tilefilename, dstile, strict=0)
-    del dstile
+    if not (options.resume and os.path.exists(tilefilename)):
+        # Tile dataset in memory
+        rx, ry, rxsize, rysize = rb
+        wx, wy, wxsize, wysize = wb
+        dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
+        data = ds.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize, band_list=list(range(1, out_data.dataBandsCount + 1)))
+        alpha = out_data.alphaband.ReadRaster(rx, ry, rxsize, rysize, wxsize, wysize)
+        if TILESIZE == querysize:
+            # Use the ReadRaster result directly in tiles ('nearest neighbour' query)
+            dstile.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
+            dstile.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
+        else:
+            dsquery = mem_drv.Create('', querysize, querysize, tilebands)
+            # TODO: fill the null value in case a tile without alpha is produced (now only png tiles are supported)
+            #for i in range(1, tilebands+1):
+            #   dsquery.GetRasterBand(1).Fill(tilenodata)
+            dsquery.WriteRaster(wx, wy, wxsize, wysize, data, band_list=list(range(1, out_data.dataBandsCount + 1)))
+            dsquery.WriteRaster(wx, wy, wxsize, wysize, alpha, band_list=[tilebands])
+            scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
+            del dsquery
+        # Big ReadRaster query in memory scaled to the tilesize - all but 'near' algo
+        # Note: For source drivers based on WaveLet compression (JPEG2000, ECW, MrSID)
+        # the ReadRaster function returns high-quality raster (not ugly nearest neighbour)
+        # TODO: Use directly 'near' for WaveLet files
+        del data
+        if options.resampling != 'antialias':
+            # Write a copy of tile to png/jpg
+            out_drv.CreateCopy(tilefilename, dstile, strict=0)
+        del dstile
     
     
 def pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
@@ -2164,40 +2172,41 @@ def init_children(tz,ty,tx):
 
 
 def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile):
-    dsquery = mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands)
-    # TODO: fill the null value
-    #for i in range(1, tilebands+1):
-    #   dsquery.GetRasterBand(1).Fill(tilenodata)
-    dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
-    # TODO: Implement more clever walking on the tiles with cache functionality
-    # probably walk should start with reading of four tiles from top left corner
-    # Hilbert curve...
-    
-# Read the tiles and write them to query window
-    for y in range(2 * ty, 2 * ty + 2):
-        for x in range(2 * tx, 2 * tx + 2):
-            minx, miny, maxx, maxy = tile.tminmax[tz + 1]
-            if x >= minx and x <= maxx and y >= miny and y <= maxy:
-                tile_r = read_tile(tz, output, tileext, y, x)
-                if (ty == 0 and y == 1) or (ty != 0 and (y % (2 * ty)) != 0):
-                    tileposy = 0
-                else:
-                    tileposy = TILESIZE
-                if tx:
-                    tileposx = x % (2 * tx) * TILESIZE
-                elif tx == 0 and x == 1:
-                    tileposx = TILESIZE
-                else:
-                    tileposx = 0
-                dsquery.WriteRaster(tileposx, tileposy, TILESIZE, TILESIZE,tile_r, band_list=list(range(1, tilebands + 1)))
-    
-    scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
-    # Write a copy of tile to png/jpg
-    if options.resampling != 'antialias':
+    if not (options.resume and os.path.exists(tilefilename)):
+        dsquery = mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands)
+        # TODO: fill the null value
+        #for i in range(1, tilebands+1):
+        #   dsquery.GetRasterBand(1).Fill(tilenodata)
+        dstile = mem_drv.Create('', TILESIZE, TILESIZE, tilebands)
+        # TODO: Implement more clever walking on the tiles with cache functionality
+        # probably walk should start with reading of four tiles from top left corner
+        # Hilbert curve...
+        
+    # Read the tiles and write them to query window
+        for y in range(2 * ty, 2 * ty + 2):
+            for x in range(2 * tx, 2 * tx + 2):
+                minx, miny, maxx, maxy = tile.tminmax[tz + 1]
+                if x >= minx and x <= maxx and y >= miny and y <= maxy:
+                    tile_r = read_tile(tz, output, tileext, y, x)
+                    if (ty == 0 and y == 1) or (ty != 0 and (y % (2 * ty)) != 0):
+                        tileposy = 0
+                    else:
+                        tileposy = TILESIZE
+                    if tx:
+                        tileposx = x % (2 * tx) * TILESIZE
+                    elif tx == 0 and x == 1:
+                        tileposx = TILESIZE
+                    else:
+                        tileposx = 0
+                    dsquery.WriteRaster(tileposx, tileposy, TILESIZE, TILESIZE,tile_r, band_list=list(range(1, tilebands + 1)))
+        
+        scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilename)
         # Write a copy of tile to png/jpg
-        out_drv.CreateCopy(tilefilename, dstile, strict=0)
-    if options.verbose:
-        print "\tbuild from zoom", tz + 1, " tiles:", 2 * tx, 2 * ty, 2 * tx + 1, 2 * ty, 2 * tx, 2 * ty + 1, 2 * tx + 1, 2 * ty + 1 # Create a KML file for this tile.
+        if options.resampling != 'antialias':
+            # Write a copy of tile to png/jpg
+            out_drv.CreateCopy(tilefilename, dstile, strict=0)
+        if options.verbose:
+            print "\tbuild from zoom", tz + 1, " tiles:", 2 * tx, 2 * ty, 2 * tx + 1, 2 * ty, 2 * tx, 2 * ty + 1, 2 * tx + 1, 2 * ty + 1 # Create a KML file for this tile.
 
 
 def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
@@ -2230,19 +2239,19 @@ def generate_overview_tiles(config,profile,tile,out_data):
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             
-            #if tmaxy-tminy<NB_PROCESS:
+            if tmaxy-tminy<NB_PROCESS:
             
                 for tx in range(tminx, tmaxx+1):
                     
                     # TODO : refaire methode stop  
                     
                     multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx)
-            #else:
-            #    lx=range(tminx,tmaxx+1)
-            #    multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx)
+            else:
+                lx=range(tminx,tmaxx+1)
+                multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx)
                 
-            #for tx in range(tminx, tmaxx+1):
-                if config.kml:
+            if config.kml:
+                for tx in range(tminx, tmaxx+1):
                     children=init_children(tz, ty, tx)
                     f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
                     f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz, children))
