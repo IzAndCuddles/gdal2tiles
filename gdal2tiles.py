@@ -683,7 +683,7 @@ class Configuration (object):
 
     def __init__(self,arguments):
         
-        self.stopped = False # TODO : refaire methode stop
+        # TODO : refaire methode stop
         self.input = None
         self.output = None
         
@@ -2129,8 +2129,6 @@ def generate_base_tiles(config,profile,tile,out_data):
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
         
         #TODO : refaire methode stop
-        if config.stopped:
-            break
     
         # Query is in 'nearest neighbour' but can be bigger in then the tilesize
         # We scale down the query to the tilesize by supplied algorithm.          
@@ -2236,8 +2234,7 @@ def generate_overview_tiles(config,profile,tile,out_data):
             
                 for tx in range(tminx, tmaxx+1):
                     
-                    if config.stopped: # TODO : refaire methode stop
-                        break    
+                    # TODO : refaire methode stop  
                     
                     multiprocess.sendJob(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx)
             #else:
