@@ -1,7 +1,8 @@
 .*
 test_image/
-image_test_miniature/
+image_test_*/
 image/
 *.pyc
 profile *
 stats.*
+orleans/
