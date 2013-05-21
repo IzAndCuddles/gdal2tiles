@@ -2150,7 +2150,7 @@ def read_tile(tz, output, tileext, y, x):
     tile_r = dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE)
     return tile_r
 
-def init_children(tz,ty,tx):
+def init_children(tile,tz,ty,tx):
     children = []
     for y in range(2 * ty, 2 * ty + 2):
         for x in range(2 * tx, 2 * tx + 2):
@@ -2242,7 +2242,7 @@ def generate_overview_tiles(config,profile,tile,out_data):
                 
             if config.kml:
                 for tx in range(tminx, tmaxx+1):
-                    children=init_children(tz, ty, tx)
+                    children=init_children(tile,tz, ty, tx)
                     f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
                     f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz, children))
                     f.close()
