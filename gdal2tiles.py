@@ -2130,10 +2130,11 @@ def generate_base_tiles(config,profile,tile,out_data):
         # Query is in 'nearest neighbour' but can be bigger in then the tilesize
         # We scale down the query to the tilesize by supplied algorithm.          
         lx=range(tminx,tmaxx+1)
-        multiprocess.sendJob((config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic))
-        
-        
-        if config.kml:
+        multiprocess.sendJob((config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic))                    
+    multiprocess.finish(ti,tcount)
+    
+    if config.kml:
+        for ty in range(tmaxy,tminy-1,-1):
             for tx in range(tminx, tmaxx+1):
             # Create a KML file for this tile.
                 kmlfilename = os.path.join(config.output, str(tz), str(tx), '%d.kml' % ty)
@@ -2141,8 +2142,6 @@ def generate_base_tiles(config,profile,tile,out_data):
                     f = open(kmlfilename, 'w')
                     f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz))
                     f.close()
-                    
-    multiprocess.finish(ti,tcount)      
 
 
 def read_tile(tz, output, tileext, y, x):
@@ -2239,14 +2238,14 @@ def generate_overview_tiles(config,profile,tile,out_data):
             else:
                 lx=range(tminx,tmaxx+1)
                 multiprocess.sendJob((config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx))
-                
-            if config.kml:
+        multiprocess.finish(ti,tcount)
+        if config.kml:
+            for ty in range(tmaxy,tminy-1,-1):
                 for tx in range(tminx, tmaxx+1):
                     children=init_children(tile,tz, ty, tx)
-                    f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
+                    f = open(os.path.join(config.output, '%d\\%d\\%d.kml' % (tz, tx, ty)), 'w')
                     f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz, children))
                     f.close()
-        multiprocess.finish(ti,tcount)
 
 
 
