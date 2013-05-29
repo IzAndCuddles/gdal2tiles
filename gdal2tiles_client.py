@@ -104,6 +104,26 @@ IP = '192.168.0.178'
 PORTNUM = 5000
 AUTHKEY = "test"
 
+#-------------------------------------------------
+def make_client_manager(ip, port, authkey):
+    """ Create a manager for a client. This manager connects to a server on the
+        given address and exposes the get_job_q and get_result_q methods for
+        accessing the shared queues from the server.
+        Return a manager object.
+    """
+    class ServerQueueManager(SyncManager):
+        pass
+
+    ServerQueueManager.register('get_job_queue')
+
+    manager = ServerQueueManager(address=(ip, port), authkey=authkey)
+    manager.connect()
+
+    print 'Client connected to %s:%s' % (ip, port)
+    return manager
+
+#--------------------------------------------------
+
 class GlobalMercator(object):
     """
     TMS Global Mercator Profile
@@ -409,26 +429,6 @@ class GlobalGeodetic(object):
         b = self.TileBounds(tx, ty, zoom)
         return (b[1],b[0],b[3],b[2])
 
-#-------------------------------------------------
-def make_client_manager(ip, port, authkey):
-    """ Create a manager for a client. This manager connects to a server on the
-        given address and exposes the get_job_q and get_result_q methods for
-        accessing the shared queues from the server.
-        Return a manager object.
-    """
-    class ServerQueueManager(SyncManager):
-        pass
-
-    ServerQueueManager.register('get_job_q')
-    ServerQueueManager.register('get_result_q')
-
-    manager = ServerQueueManager(address=(ip, port), authkey=authkey)
-    manager.connect()
-
-    print 'Client connected to %s:%s' % (ip, port)
-    return manager
-#--------------------------------------------------
-
 
 def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
 
@@ -441,6 +441,7 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
             pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
             
+        q.task_done()
         job = q.get()
         
 def processOverviewTileJobs(q,n):
@@ -457,6 +458,7 @@ def processOverviewTileJobs(q,n):
         for tx in lx:
             pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
+        q.task_done()
         job = q.get()
 
 class MultiProcess(object):
@@ -480,8 +482,6 @@ class MultiProcess(object):
             self.process.append(p)
 
     def finish(self,n,ncount):
-        for p in self.process:
-            self.q.put('TERMINATE')
         done = False
         while not done:
             alive_count = len(self.process)
@@ -492,10 +492,6 @@ class MultiProcess(object):
                     alive_count -= 1
                 progressbar(n.value/float(ncount))
             done = (alive_count == 0)
-
-
-
-
 
 class Profile(object):
     
@@ -2094,7 +2090,7 @@ def pickle_generate_base_tile(out_data,tiledriver, options, resampling, tileband
     generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile)
 
 
-def generate_base_tiles(config,profile,tile,out_data):
+def generate_base_tiles(config,profile,tile,out_data,manager_q):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
     
     print("Generating Base Tiles:")
@@ -2129,8 +2125,7 @@ def generate_base_tiles(config,profile,tile,out_data):
     tz = tile.tmaxz
     
     ti=multiprocessing.Value('f',0.0)
-    manager = make_client_manager(IP, PORTNUM, AUTHKEY)
-    multiprocess = MultiProcess(manager.get_job_q())
+    multiprocess = MultiProcess(manager_q)
     multiprocess.processBase(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)                
     multiprocess.finish(ti,tcount)      
 
@@ -2196,7 +2191,7 @@ def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, 
         os.makedirs(os.path.dirname(tilefilename))
     generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
 
-def generate_overview_tiles(config,profile,tile,out_data):
+def generate_overview_tiles(config,profile,tile,out_data,manager_q):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
     
     print("Generating Overview Tiles:")
@@ -2214,17 +2209,15 @@ def generate_overview_tiles(config,profile,tile,out_data):
     
     # querysize = TILESIZE * 2
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
-        manager = make_client_manager(IP, PORTNUM, AUTHKEY)
-        while manager.get_job_q().empty():
-            time.sleep(1)
-        multiprocess = MultiProcess(manager.get_job_q())
+        multiprocess = MultiProcess(manager_q)
         multiprocess.processOverview(ti)
         multiprocess.finish(ti,tcount)
 
 
 def process(config,tile):
     """The main processing function, runs all the main steps of processing"""
-    
+    manager = make_client_manager(IP, PORTNUM, AUTHKEY)
+    manager_q = manager.get_job_queue()
     # Opening and preprocessing of the input file
     out_data,profile=config.open_input(tile)
     
@@ -2233,12 +2226,12 @@ def process(config,tile):
     
     t0=time.clock()
     # Generation of the lowest tiles
-    generate_base_tiles(config,profile,tile,out_data)
+    generate_base_tiles(config,profile,tile,out_data,manager_q)
     t1=time.clock()
     print t1-t0
     t0=time.clock()
     # Generation of the overview tiles (higher in the pyramid)
-    generate_overview_tiles(config,profile,tile,out_data)
+    generate_overview_tiles(config,profile,tile,out_data,manager_q)
     t1=time.clock()
     print t1-t0
 

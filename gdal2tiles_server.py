@@ -102,6 +102,36 @@ IP = socket.gethostbyname(socket.gethostname())
 NUMPORT = 5000
 AUTHKEY = "test"
 
+#-----------------------------------------------------
+class JobQueueManager(SyncManager):
+    pass
+
+job_q = multiprocessing.JoinableQueue()
+        
+def get_job_queue():
+    return job_q
+
+
+def make_server_manager(port, authkey):
+    """ Create a manager for the server, listening on the given port.
+        Return a manager object with get_job_q and get_result_q methods.
+    """
+
+    # This is based on the examples in the official docs of multiprocessing.
+    # get_{job|result}_q return synchronized proxies for the actual Queue
+    # objects.
+
+
+    JobQueueManager.register('get_job_queue', callable=get_job_queue)
+
+    manager = JobQueueManager(address=(IP, port), authkey=authkey)
+    manager.start()
+    print 'Server started at port %s' % port
+    return manager
+
+#-------------------------------------------------------
+
+
 class GlobalMercator(object):
     """
     TMS Global Mercator Profile
@@ -407,38 +437,6 @@ class GlobalGeodetic(object):
         b = self.TileBounds(tx, ty, zoom)
         return (b[1],b[0],b[3],b[2])
 
-#-----------------------------------------------------
-class JobQueueManager(SyncManager):
-    pass
-
-job_q = multiprocessing.Queue()
-        
-def get_job_q():
-    return job_q
-
-
-def make_server_manager(port, authkey):
-    """ Create a manager for the server, listening on the given port.
-        Return a manager object with get_job_q and get_result_q methods.
-    """
-
-    # This is based on the examples in the official docs of multiprocessing.
-    # get_{job|result}_q return synchronized proxies for the actual Queue
-    # objects.
-
-
-    JobQueueManager.register('get_job_q', callable=get_job_q)
-
-    manager = JobQueueManager(address=(IP, port), authkey=authkey)
-    manager.start()
-    print 'Server started at port %s' % port
-    return manager
-
-def finish(manager):
-    while not manager.get_job_q().empty():    
-        time.sleep(0.5)
-    manager.shutdown()
-#-------------------------------------------------------
 
 class Profile(object):
     
@@ -1867,7 +1865,7 @@ def generate_metadata(config,profile,tile,out_data):
 
 #FONCTIONS TILES
 
-def generate_base_tiles(config,profile,tile,out_data):
+def generate_base_tiles(config,profile,tile,out_data,manager_q):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
     
     print("Generating Base Tiles:")
@@ -1901,14 +1899,15 @@ def generate_base_tiles(config,profile,tile,out_data):
     
     ti=multiprocessing.Value('f',0.0)
     
-    manager = make_server_manager(NUMPORT, AUTHKEY)
     
     for ty in range(tmaxy, tminy-1, -1):
         #TODO : refaire methode stop     
         lx=range(tminx,tmaxx+1)
         job = (config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
-        manager.get_job_q().put(job)                          
-    finish(manager)
+        manager_q.put(job)
+        
+    manager_q.join()
+    print "Done"
     
     if config.kml:
         for ty in range(tmaxy,tminy-1,-1):
@@ -1929,7 +1928,7 @@ def init_children(tile,tz,ty,tx):
                 children.append([x, y, tz + 1])
     return children
 
-def generate_overview_tiles(config,profile,tile,out_data):
+def generate_overview_tiles(config,profile,tile,out_data,manager_q):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
     
     print("Generating Overview Tiles:")
@@ -1947,20 +1946,19 @@ def generate_overview_tiles(config,profile,tile,out_data):
     
     # querysize = TILESIZE * 2
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
-        
-        manager = make_server_manager(NUMPORT, AUTHKEY)
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             if tmaxy-tminy<NB_PROCESS:
                 for tx in range(tminx, tmaxx+1):
                     # TODO : refaire methode stop  
                     job=(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx)
-                    manager.get_job_q().put(job)
+                    manager_q.put(job)
             else:
                 lx=range(tminx,tmaxx+1)
                 job=(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx)
-                manager.get_job_q().put(job)
-        finish(manager)
+                manager_q.put(job)
+        manager_q.join()
+        print "Done"
         
         if config.kml:
             for ty in range(tmaxy,tminy-1,-1):
@@ -1973,6 +1971,9 @@ def generate_overview_tiles(config,profile,tile,out_data):
 def process(config,tile):
     """The main processing function, runs all the main steps of processing"""
     
+    manager = make_server_manager(NUMPORT, AUTHKEY)
+    manager_q = manager.get_job_queue()
+    
     # Opening and preprocessing of the input file
     out_data,profile=config.open_input(tile)
     
@@ -1980,11 +1981,12 @@ def process(config,tile):
     generate_metadata(config,profile,tile,out_data)
     
     # Generation of the lowest tiles
-    generate_base_tiles(config,profile,tile,out_data)
+    generate_base_tiles(config,profile,tile,out_data,manager_q)
 
     # Generation of the overview tiles (higher in the pyramid)
-    generate_overview_tiles(config,profile,tile,out_data)
+    generate_overview_tiles(config,profile,tile,out_data,manager_q)
 
+    manager.shutdown()
 
 # =============================================================================
 # =============================================================================
