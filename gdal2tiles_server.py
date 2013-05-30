@@ -1899,6 +1899,12 @@ def generate_base_tiles(config,profile,tile,out_data,manager_q):
     
     ti=multiprocessing.Value('f',0.0)
     
+    # Create directories for the tile
+    for ty in range(tmaxy,tminy-1,-1):
+        for tx in range(tminx,tmaxx+1):
+                tilefilename = os.path.join(config.output, str(tz), str(tx), "%s.%s" % (ty, config.tileext))
+                if not os.path.exists(os.path.dirname(tilefilename)):
+                    os.makedirs(os.path.dirname(tilefilename))
     
     for ty in range(tmaxy, tminy-1, -1):
         #TODO : refaire methode stop     
@@ -1936,6 +1942,15 @@ def generate_overview_tiles(config,profile,tile,out_data,manager_q):
     tilebands = out_data.dataBandsCount + 1
     
     # Usage of existing tiles: from 4 underlying tiles generate one as overview.
+    
+    # Create directories for the tile
+    for tz in range(tile.maxz-1,tile.tminz-1,-1):
+        tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
+        for ty in range(tmaxy, tminy-1, -1):
+            for tx in range(tminx, tmaxx+1):
+                tilefilename = os.path.join(config.output, str(tz), str(tx), "%s.%s" % (ty, config.tileext))
+                if not os.path.exists(os.path.dirname(tilefilename)):
+                    os.makedirs(os.path.dirname(tilefilename))
     
     tcount = 0
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
