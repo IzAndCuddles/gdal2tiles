@@ -107,10 +107,17 @@ class JobQueueManager(SyncManager):
     pass
 
 job_q = multiprocessing.JoinableQueue()
+e = multiprocessing.Event()
+batchId = multiprocessing.Value('i',0)
         
 def get_job_queue():
     return job_q
 
+def get_event():
+    return e
+
+def get_batchId():
+    return batchId
 
 def make_server_manager(port, authkey):
     """ Create a manager for the server, listening on the given port.
@@ -121,8 +128,9 @@ def make_server_manager(port, authkey):
     # get_{job|result}_q return synchronized proxies for the actual Queue
     # objects.
 
-
     JobQueueManager.register('get_job_queue', callable=get_job_queue)
+    JobQueueManager.register('get_event',callable=get_event)
+    JobQueueManager.register('get_batchId',callable=get_batchId)
 
     manager = JobQueueManager(address=(IP, port), authkey=authkey)
     manager.start()
@@ -1865,8 +1873,14 @@ def generate_metadata(config,profile,tile,out_data):
 
 #FONCTIONS TILES
 
-def generate_base_tiles(config,profile,tile,out_data,manager_q):
+def generate_base_tiles(config,profile,tile,out_data,manager):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
+    
+    manager_q = manager.get_job_queue()
+    manager_e = manager.get_event()
+    #manager_id = manager.get_batchId()
+    
+    manager_e.clear()
     
     print("Generating Base Tiles:")
     
@@ -1912,6 +1926,8 @@ def generate_base_tiles(config,profile,tile,out_data,manager_q):
         job = (config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
         manager_q.put(job)
         
+    #manager_id.value += 1
+    manager_e.set()
     manager_q.join()
     print "Done"
     
@@ -1934,8 +1950,14 @@ def init_children(tile,tz,ty,tx):
                 children.append([x, y, tz + 1])
     return children
 
-def generate_overview_tiles(config,profile,tile,out_data,manager_q):
+def generate_overview_tiles(config,profile,tile,out_data,manager):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
+    
+    manager_q = manager.get_job_queue()
+    manager_e = manager.get_event()
+    #manager_id = manager.get_batchId()
+    
+    manager_e.clear()
     
     print("Generating Overview Tiles:")
     
@@ -1972,6 +1994,8 @@ def generate_overview_tiles(config,profile,tile,out_data,manager_q):
                 lx=range(tminx,tmaxx+1)
                 job=(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx)
                 manager_q.put(job)
+        #manager_id.value += 1
+        manager_e.set()
         manager_q.join()
         
         if config.kml:
@@ -1987,7 +2011,6 @@ def process(config,tile):
     """The main processing function, runs all the main steps of processing"""
     
     manager = make_server_manager(NUMPORT, AUTHKEY)
-    manager_q = manager.get_job_queue()
     
     # Opening and preprocessing of the input file
     out_data,profile=config.open_input(tile)
@@ -1996,10 +2019,10 @@ def process(config,tile):
     generate_metadata(config,profile,tile,out_data)
     
     # Generation of the lowest tiles
-    generate_base_tiles(config,profile,tile,out_data,manager_q)
+    generate_base_tiles(config,profile,tile,out_data,manager)
 
     # Generation of the overview tiles (higher in the pyramid)
-    generate_overview_tiles(config,profile,tile,out_data,manager_q)
+    generate_overview_tiles(config,profile,tile,out_data,manager)
 
     manager.shutdown()
 

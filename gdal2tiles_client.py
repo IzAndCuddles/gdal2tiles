@@ -115,6 +115,8 @@ def make_client_manager(ip, port, authkey):
         pass
 
     ServerQueueManager.register('get_job_queue')
+    ServerQueueManager.register('get_event')
+    ServerQueueManager.register('get_batchId')
 
     manager = ServerQueueManager(address=(ip, port), authkey=authkey)
     manager.connect()
@@ -430,25 +432,38 @@ class GlobalGeodetic(object):
         return (b[1],b[0],b[3],b[2])
 
 
-def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
-
+def processBaseTileJobs(q, e, s_srs, input, profile, verbose, in_nodata, i, n):
     out_data = init_out_data(s_srs, input, profile, verbose, in_nodata)
-    job = q.get()
+    while True:
+        #base_batchId = batchId.value
+        while q.empty():
+            if e.is_set():# or batchId.value != base_batchId:
+                break
+            else:
+                e.wait(0.1)
     
-    while job !='TERMINATE':
+        job = q.get()
+        
         tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic = job
+        
         for tx in lx:
             pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
             
         q.task_done()
-        job = q.get()
-    q.task_done()
         
-def processOverviewTileJobs(q,n):
-    job = q.get()
+def processOverviewTileJobs(q, e, n):
     
-    while job !='TERMINATE':
+    while True:
+        #base_batchId = batchId.value
+        while q.empty():
+            if e.is_set():# or batchId.value != base_batchId:
+                break
+            else:
+                e.wait(0.1)
+        
+        job = q.get()
+    
         output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, lx = job
         try:
             iterator = iter(lx)
@@ -460,8 +475,6 @@ def processOverviewTileJobs(q,n):
             pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
         q.task_done()
-        job = q.get()
-    q.task_done()
 
 class MultiProcess(object):
     
@@ -469,23 +482,21 @@ class MultiProcess(object):
         self.q=q
         self.process=[]
     
-    def processBase(self, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
+    def processBase(self, e, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
         for i in xrange(num_process):
-            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, i, n))
+            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, e, s_srs, input, profile, verbose, in_nodata, i, n))
             p.daemon=True
             p.start()
             self.process.append(p)
             
-    def processOverview(self, n, num_process=NB_PROCESS):
+    def processOverview(self, e, n, num_process=NB_PROCESS):
         for i in xrange(num_process):
-            p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, n))
+            p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, e, n))
             p.daemon=True
             p.start()
             self.process.append(p)
 
     def finish(self,n,ncount):
-        for p in self.process:
-            self.q.put('TERMINATE')
         done = False
         while not done:
             alive_count = len(self.process)
@@ -2090,8 +2101,12 @@ def pickle_generate_base_tile(out_data,tiledriver, options, resampling, tileband
     generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile)
 
 
-def generate_base_tiles(config,profile,tile,out_data,manager_q):
+def generate_base_tiles(config,profile,tile,out_data,manager):
     """Generation of the base tiles (the lowest in the pyramid) directly from the input raster"""
+    
+    manager_q = manager.get_job_queue()
+    manager_e = manager.get_event()
+    #manager_id = manager.get_batchId()
     
     print("Generating Base Tiles:")
     
@@ -2126,7 +2141,7 @@ def generate_base_tiles(config,profile,tile,out_data,manager_q):
     
     ti=multiprocessing.Value('f',0.0)
     multiprocess = MultiProcess(manager_q)
-    multiprocess.processBase(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)                
+    multiprocess.processBase(manager_e, config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)                
     multiprocess.finish(ti,tcount)      
 
 
@@ -2189,8 +2204,12 @@ def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, 
     
     generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
 
-def generate_overview_tiles(config,profile,tile,out_data,manager_q):
+def generate_overview_tiles(config,profile,tile,out_data,manager):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
+    
+    manager_q = manager.get_job_queue()
+    manager_e = manager.get_event()
+    #manager_id = manager.get_batchId()    
     
     print("Generating Overview Tiles:")
     
@@ -2208,7 +2227,7 @@ def generate_overview_tiles(config,profile,tile,out_data,manager_q):
     # querysize = TILESIZE * 2
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
         multiprocess = MultiProcess(manager_q)
-        multiprocess.processOverview(ti)
+        multiprocess.processOverview(manager_e, ti)
         multiprocess.finish(ti,tcount)
 
 
@@ -2216,7 +2235,6 @@ def process(config,tile):
     """The main processing function, runs all the main steps of processing"""
     
     manager = make_client_manager(IP, PORTNUM, AUTHKEY)
-    manager_q = manager.get_job_queue()
     
     # Opening and preprocessing of the input file
     out_data,profile=config.open_input(tile)
@@ -2226,12 +2244,12 @@ def process(config,tile):
     
     t0=time.clock()
     # Generation of the lowest tiles
-    generate_base_tiles(config,profile,tile,out_data,manager_q)
+    generate_base_tiles(config,profile,tile,out_data,manager)
     t1=time.clock()
     print t1-t0
     t0=time.clock()
     # Generation of the overview tiles (higher in the pyramid)
-    generate_overview_tiles(config,profile,tile,out_data,manager_q)
+    generate_overview_tiles(config,profile,tile,out_data,manager)
     t1=time.clock()
     print t1-t0
 
