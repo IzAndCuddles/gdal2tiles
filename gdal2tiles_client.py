@@ -443,6 +443,7 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
             
         q.task_done()
         job = q.get()
+    q.task_done()
         
 def processOverviewTileJobs(q,n):
     job = q.get()
@@ -460,6 +461,7 @@ def processOverviewTileJobs(q,n):
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
         q.task_done()
         job = q.get()
+    q.task_done()
 
 class MultiProcess(object):
     
@@ -482,6 +484,8 @@ class MultiProcess(object):
             self.process.append(p)
 
     def finish(self,n,ncount):
+        for p in self.process:
+            self.q.put('TERMINATE')
         done = False
         while not done:
             alive_count = len(self.process)
@@ -2216,8 +2220,10 @@ def generate_overview_tiles(config,profile,tile,out_data,manager_q):
 
 def process(config,tile):
     """The main processing function, runs all the main steps of processing"""
+    
     manager = make_client_manager(IP, PORTNUM, AUTHKEY)
     manager_q = manager.get_job_queue()
+    
     # Opening and preprocessing of the input file
     out_data,profile=config.open_input(tile)
     

@@ -1958,7 +1958,6 @@ def generate_overview_tiles(config,profile,tile,out_data,manager_q):
                 job=(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx)
                 manager_q.put(job)
         manager_q.join()
-        print "Done"
         
         if config.kml:
             for ty in range(tmaxy,tminy-1,-1):
@@ -1967,6 +1966,7 @@ def generate_overview_tiles(config,profile,tile,out_data,manager_q):
                     f = open(os.path.join(config.output, '%d/%d/%d.kml' % (tz, tx, ty)), 'w')
                     f.write(generate_kml(config.tileext,config.options,profile.tileswne,tx, ty, tz, children))
                     f.close()
+    print "Done"
 
 def process(config,tile):
     """The main processing function, runs all the main steps of processing"""
