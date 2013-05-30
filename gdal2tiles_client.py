@@ -2085,10 +2085,6 @@ def pickle_generate_base_tile(out_data,tiledriver, options, resampling, tileband
     ds=out_data.out_ds
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
     
-    # Create directories for the tile
-    if not os.path.exists(os.path.dirname(tilefilename)):
-        os.makedirs(os.path.dirname(tilefilename))
-    
     rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tile.tsize,out_data.out_ds,tile.nativezoom)
 
     generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile)
@@ -2190,9 +2186,7 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,o
 def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
     out_drv,mem_drv = init_drv(tiledriver)
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
-    # Create directories for the tile
-    if not os.path.exists(os.path.dirname(tilefilename)):
-        os.makedirs(os.path.dirname(tilefilename))
+    
     generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
 
 def generate_overview_tiles(config,profile,tile,out_data,manager_q):
