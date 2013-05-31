@@ -1,5 +1,6 @@
 import Queue
 from multiprocessing.managers import SyncManager
+import multiprocessing
 import time
 
 PORTNUM = 5000
@@ -21,12 +22,24 @@ class JobQueueManager(SyncManager):
 
 job_q = Queue.Queue()
 result_q = Queue.Queue()
+#batchId = multiprocessing.Value('i',0)
+batchId = None
+entier = 0
 
 def get_job_q():
     return job_q
 
 def get_result_q():
     return result_q
+
+def get_batchId():
+    import traceback
+    traceback.print_stack()
+    print "hello world"
+    return batchId
+
+def get_entier():
+    return entier
 
 def make_server_manager(port, authkey):
     """ Create a manager for the server, listening on the given port.
@@ -35,10 +48,16 @@ def make_server_manager(port, authkey):
 
     JobQueueManager.register('get_job_q', callable=get_job_q)
     JobQueueManager.register('get_result_q', callable=get_result_q)
+    JobQueueManager.register('get_batchId', callable = get_batchId)
+    JobQueueManager.register('get_entier', callable = get_entier)
 
     manager = JobQueueManager(address=('192.168.0.178', port), authkey=authkey)
     manager.start()
     print 'Server started at port %s' % port
+    
+    global batchId
+    batchId = manager.Value('i', 0)
+    
     return manager
 
 def runserver():
@@ -46,7 +65,24 @@ def runserver():
     manager = make_server_manager(PORTNUM, AUTHKEY)
     shared_job_q = manager.get_job_q()
     shared_result_q = manager.get_result_q()
-
+    b = manager.get_batchId()
+    b_id = b._getvalue()
+    
+    entier = manager.get_entier()
+    e = entier._getvalue()
+    
+    print e
+    print entier
+    
+    entier+=1
+    
+    e+=1
+    
+    print e
+    
+    global batchId
+    print "batchId",batchId.value
+    print "b_id", b_id.value
     N = 999
     nums = make_nums(N)
 
@@ -71,6 +107,4 @@ def runserver():
     return resultdict
     
 if __name__=='__main__':
-    result = runserver()
-    for r in result :
-        print r
+    runserver()
