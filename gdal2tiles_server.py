@@ -1912,12 +1912,11 @@ def generate_base_tiles(config,profile,tile,out_data,manager):
     
     ti=multiprocessing.Value('f',0.0)
     
-    # Create directories for the tile
-    for ty in range(tmaxy,tminy-1,-1):
-        for tx in range(tminx,tmaxx+1):
-                tilefilename = os.path.join(config.output, str(tz), str(tx), "%s.%s" % (ty, config.tileext))
-                if not os.path.exists(os.path.dirname(tilefilename)):
-                    os.makedirs(os.path.dirname(tilefilename))
+    # Create directories for the tiles
+    for tx in range(tminx,tmaxx+1):
+            tilefolder = os.path.join(config.output, str(tz), str(tx))
+            if not os.path.exists(tilefolder):
+                os.makedirs(tilefolder)
     
     for ty in range(tmaxy, tminy-1, -1):
         #TODO : refaire methode stop     
@@ -1967,11 +1966,10 @@ def generate_overview_tiles(config,profile,tile,out_data,manager):
     # Create directories for the tile
     for tz in range(tile.tmaxz-1,tile.tminz-1,-1):
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
-        for ty in range(tmaxy, tminy-1, -1):
-            for tx in range(tminx, tmaxx+1):
-                tilefilename = os.path.join(config.output, str(tz), str(tx), "%s.%s" % (ty, config.tileext))
-                if not os.path.exists(os.path.dirname(tilefilename)):
-                    os.makedirs(os.path.dirname(tilefilename))
+        for tx in range(tminx,tmaxx+1):
+                tilefolder = os.path.join(config.output, str(tz), str(tx))
+                if not os.path.exists(tilefolder):
+                    os.makedirs(tilefolder)
     
     tcount = 0
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
