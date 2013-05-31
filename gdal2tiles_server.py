@@ -1914,9 +1914,9 @@ def generate_base_tiles(config,profile,tile,out_data,manager):
     
     # Create directories for the tiles
     for tx in range(tminx,tmaxx+1):
-            tilefolder = os.path.join(config.output, str(tz), str(tx))
-            if not os.path.exists(tilefolder):
-                os.makedirs(tilefolder)
+        tilefolder = os.path.join(config.output, str(tz), str(tx))
+        if not os.path.exists(tilefolder):
+            os.makedirs(tilefolder)
     
     for ty in range(tmaxy, tminy-1, -1):
         #TODO : refaire methode stop     
@@ -1963,7 +1963,7 @@ def generate_overview_tiles(config,profile,tile,out_data,manager):
     
     # Usage of existing tiles: from 4 underlying tiles generate one as overview.
     
-    # Create directories for the tile
+    # Create directories for the tiles
     for tz in range(tile.tmaxz-1,tile.tminz-1,-1):
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for tx in range(tminx,tmaxx+1):
