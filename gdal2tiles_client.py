@@ -432,12 +432,13 @@ class GlobalGeodetic(object):
         return (b[1],b[0],b[3],b[2])
 
 
-def processBaseTileJobs(q, e, s_srs, input, profile, verbose, in_nodata, i, n):
+def processBaseTileJobs(q, e, batchId, s_srs, input, profile, verbose, in_nodata, i, n):
     out_data = init_out_data(s_srs, input, profile, verbose, in_nodata)
+    base_batchId = batchId.value
+    
     while True:
-        #base_batchId = batchId.value
         while q.empty():
-            if e.is_set():# or batchId.value != base_batchId:
+            if e.is_set() or batchId.value != base_batchId:
                 break
             else:
                 e.wait(0.1)
@@ -452,12 +453,12 @@ def processBaseTileJobs(q, e, s_srs, input, profile, verbose, in_nodata, i, n):
             
         q.task_done()
         
-def processOverviewTileJobs(q, e, n):
+def processOverviewTileJobs(q, e, batchId, n):
     
+    base_batchId = batchId.value
     while True:
-        #base_batchId = batchId.value
         while q.empty():
-            if e.is_set():# or batchId.value != base_batchId:
+            if e.is_set() or batchId.value != base_batchId:
                 break
             else:
                 e.wait(0.1)
@@ -482,16 +483,16 @@ class MultiProcess(object):
         self.q=q
         self.process=[]
     
-    def processBase(self, e, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
+    def processBase(self, e, batchId, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
         for i in xrange(num_process):
-            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, e, s_srs, input, profile, verbose, in_nodata, i, n))
+            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, e, batchId, s_srs, input, profile, verbose, in_nodata, i, n))
             p.daemon=True
             p.start()
             self.process.append(p)
             
-    def processOverview(self, e, n, num_process=NB_PROCESS):
+    def processOverview(self, e, batchId, n, num_process=NB_PROCESS):
         for i in xrange(num_process):
-            p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, e, n))
+            p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, e, batchId, n))
             p.daemon=True
             p.start()
             self.process.append(p)
@@ -2106,7 +2107,7 @@ def generate_base_tiles(config,profile,tile,out_data,manager):
     
     manager_q = manager.get_job_queue()
     manager_e = manager.get_event()
-    #manager_id = manager.get_batchId()
+    manager_id = manager.get_batchId()
     
     print("Generating Base Tiles:")
     
@@ -2141,7 +2142,7 @@ def generate_base_tiles(config,profile,tile,out_data,manager):
     
     ti=multiprocessing.Value('f',0.0)
     multiprocess = MultiProcess(manager_q)
-    multiprocess.processBase(manager_e, config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)                
+    multiprocess.processBase(manager_e, manager_id, config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)                
     multiprocess.finish(ti,tcount)      
 
 
@@ -2208,8 +2209,8 @@ def generate_overview_tiles(config,profile,tile,out_data,manager):
     """Generation of the overview tiles (higher in the pyramid) based on existing tiles"""
     
     manager_q = manager.get_job_queue()
-    manager_e = manager.get_event()
-    #manager_id = manager.get_batchId()    
+    manager_e = manager.get_event()  
+    manager_id = manager.get_batchId()
     
     print("Generating Overview Tiles:")
     
@@ -2227,7 +2228,7 @@ def generate_overview_tiles(config,profile,tile,out_data,manager):
     # querysize = TILESIZE * 2
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
         multiprocess = MultiProcess(manager_q)
-        multiprocess.processOverview(manager_e, ti)
+        multiprocess.processOverview(manager_e,manager_id, ti)
         multiprocess.finish(ti,tcount)
 
 

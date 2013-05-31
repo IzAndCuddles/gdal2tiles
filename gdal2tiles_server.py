@@ -1878,7 +1878,6 @@ def generate_base_tiles(config,profile,tile,out_data,manager):
     
     manager_q = manager.get_job_queue()
     manager_e = manager.get_event()
-    #manager_id = manager.get_batchId()
     
     manager_e.clear()
     
@@ -1925,8 +1924,9 @@ def generate_base_tiles(config,profile,tile,out_data,manager):
         lx=range(tminx,tmaxx+1)
         job = (config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic)
         manager_q.put(job)
-        
-    #manager_id.value += 1
+    
+    global batchId
+    batchId.value += 1    
     manager_e.set()
     manager_q.join()
     print "Done"
@@ -1955,7 +1955,6 @@ def generate_overview_tiles(config,profile,tile,out_data,manager):
     
     manager_q = manager.get_job_queue()
     manager_e = manager.get_event()
-    #manager_id = manager.get_batchId()
     
     manager_e.clear()
     
@@ -1994,7 +1993,9 @@ def generate_overview_tiles(config,profile,tile,out_data,manager):
                 lx=range(tminx,tmaxx+1)
                 job=(config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, lx)
                 manager_q.put(job)
-        #manager_id.value += 1
+                
+        global batchId
+        batchId.value += 1
         manager_e.set()
         manager_q.join()
         
