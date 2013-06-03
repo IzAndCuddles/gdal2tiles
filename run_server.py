@@ -20,11 +20,10 @@ def make_nums(N):
 class JobQueueManager(SyncManager):
     pass
 
-job_q = Queue.Queue()
-result_q = Queue.Queue()
-#batchId = multiprocessing.Value('i',0)
-batchId = None
+job_q = multiprocessing.JoinableQueue()
+result_q = multiprocessing.JoinableQueue()
 entier = 0
+event = multiprocessing.Event()
 
 def get_job_q():
     return job_q
@@ -32,14 +31,11 @@ def get_job_q():
 def get_result_q():
     return result_q
 
-def get_batchId():
-    import traceback
-    traceback.print_stack()
-    print "hello world"
-    return batchId
-
 def get_entier():
     return entier
+
+def get_event():
+    return event
 
 def make_server_manager(port, authkey):
     """ Create a manager for the server, listening on the given port.
@@ -48,15 +44,12 @@ def make_server_manager(port, authkey):
 
     JobQueueManager.register('get_job_q', callable=get_job_q)
     JobQueueManager.register('get_result_q', callable=get_result_q)
-    JobQueueManager.register('get_batchId', callable = get_batchId)
     JobQueueManager.register('get_entier', callable = get_entier)
-
+    JobQueueManager.register('get_event', callable = get_event)
+    
     manager = JobQueueManager(address=('192.168.0.178', port), authkey=authkey)
     manager.start()
     print 'Server started at port %s' % port
-    
-    global batchId
-    batchId = manager.Value('i', 0)
     
     return manager
 
@@ -65,46 +58,29 @@ def runserver():
     manager = make_server_manager(PORTNUM, AUTHKEY)
     shared_job_q = manager.get_job_q()
     shared_result_q = manager.get_result_q()
-    b = manager.get_batchId()
-    b_id = b._getvalue()
-    
-    entier = manager.get_entier()
-    e = entier._getvalue()
-    
-    print e
-    print entier
-    
-    entier+=1
-    
-    e+=1
-    
-    print e
-    
-    global batchId
-    print "batchId",batchId.value
-    print "b_id", b_id.value
-    N = 999
-    nums = make_nums(N)
+    event = manager.get_event()
+    entier = manager.get_entier()._getvalue()
 
-    # The numbers are split into chunks. Each chunk is pushed into the job
-    # queue.
-    chunksize = 43
-    for i in range(0, len(nums), chunksize):
-        shared_job_q.put(nums[i:i + chunksize])
-
-    # Wait until all results are ready in shared_result_q
-    numresults = 0
-    resultdict = {}
-    while numresults < N:
-        outdict = shared_result_q.get()
-        resultdict.update(outdict)
-        numresults += len(outdict)
-
-    # Sleep a bit before shutting down the server - to give clients time to
-    # realize the job queue is empty and exit in an orderly way.
-    time.sleep(2)
+    N = 99
+    for n in xrange(10):
+        
+        event.clear()
+        
+        nums = make_nums(N*n)
+    
+        # The numbers are split into chunks. Each chunk is pushed into the job
+        # queue.
+        chunksize = 43
+        for i in range(0, len(nums), chunksize):
+            shared_job_q.put(nums[i:i + chunksize])
+            
+        entier += 1
+        event.set()
+        shared_job_q.join()
+        time.sleep(1)
+        print "Done ", n
+    
     manager.shutdown()
-    return resultdict
     
 if __name__=='__main__':
     runserver()
