@@ -683,6 +683,7 @@ class Configuration (object):
         self.output = None
         
         # Tile format
+        # TODO : Passer ces deux variables en options dans optparse_init
         self.tiledriver = 'PNG'
         self.tileext = 'png'
         
@@ -704,6 +705,7 @@ class Configuration (object):
             error("This version of GDAL is not supported. Please upgrade to 1.6+.")
         
         # Test output directory, if it doesn't exist
+        # TODO : Ajouter l'option du rep de destination
         if os.path.isdir(args[-1]) or ( len(args) > 1 and not os.path.exists(args[-1])):
             self.output = args[-1]
             args = args[:-1]
@@ -751,6 +753,11 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
             
     def optparse_init(self):
         """Prepare the option parser for input (argv)"""
+        # TODO : ajouter les options
+        
+        # TODO : plusieurs projections
+        
+        # TODO : plusieurs fichiers
         
         from optparse import OptionParser, OptionGroup
         usage = "Usage: %prog [options] input_file(s) [output]"
