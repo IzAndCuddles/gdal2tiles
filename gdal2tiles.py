@@ -443,33 +443,23 @@ def processOverviewTileJobs(q,n):
 
 class MultiProcess(object):
     
-    def __init__(self):
+    def __init__(self,num_process=NB_PROCESS):
         self.q=multiprocessing.Queue()
         self.process=[]
-        # TODO mettre le num_process dans self.num_process
+        self.num_process = num_process
     
-    def _processTile(self,num_process,target,args):
-        for i in xrange(num_process):
+    def _processTile(self,target,args):
+        for i in xrange(self.num_process):
             p = multiprocessing.Process(target=target, args=args)
             p.daemon=True
             p.start()
             self.process.append(p)
     
-    def processBase(self, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
-        #self._processTile(num_process,processBaseTileJobs,(self.q,s_srs,input,profile,verbose,in_nodata,n))
-        for i in xrange(num_process):
-            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, n))
-            p.daemon=True
-            p.start()
-            self.process.append(p)
+    def processBase(self, s_srs, input, profile, verbose, in_nodata, n):
+        self._processTile(processBaseTileJobs,(self.q,s_srs,input,profile,verbose,in_nodata,n))
             
-    def processOverview(self, n, num_process=NB_PROCESS):
-        #self._processTile(num_process,processOverviewTileJobs,(self.q,n))
-        for i in xrange(num_process):
-            p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, n))
-            p.daemon=True
-            p.start()
-            self.process.append(p)
+    def processOverview(self, n):
+        self._processTile(processOverviewTileJobs,(self.q,n))
             
     def sendJob(self, job):
         self.q.put(job)
