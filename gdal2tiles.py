@@ -422,7 +422,7 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, n):
     while job !='TERMINATE':
         tiledriver, options, resampling, tilebands, querysize, tz, ty, lx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic = job
         for tx in lx:
-            pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
+            process_base_tile_job(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic)
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
             
         job = q.get()
@@ -437,7 +437,7 @@ def processOverviewTileJobs(q,n):
         except TypeError:
             lx=[lx]
         for tx in lx:
-            pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
+            process_overview_tile_job(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
         job = q.get()
 
@@ -748,10 +748,6 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
     def optparse_init(self):
         """Prepare the option parser for input (argv)"""
         # TODO : ajouter les options
-        
-        # TODO : plusieurs projections
-        
-        # TODO : plusieurs fichiers
         
         from optparse import OptionParser, OptionGroup
         usage = "Usage: %prog [options] input_file(s) [output]"
@@ -2073,8 +2069,7 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
         del dstile
     
     
-def pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
-    # TODO renommer cette fonction
+def process_base_tile_job(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
     out_drv,mem_drv = init_drv(tiledriver)
     ds=out_data.out_ds
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
@@ -2202,8 +2197,7 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,o
             print "\tbuild from zoom", tz + 1, " tiles:", 2 * tx, 2 * ty, 2 * tx + 1, 2 * ty, 2 * tx, 2 * ty + 1, 2 * tx + 1, 2 * ty + 1 # Create a KML file for this tile.
 
 
-def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
-    # TODO renommer cette fonction (process_overview_tile_job ?)
+def process_overview_tile_job(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
     out_drv,mem_drv = init_drv(tiledriver)
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
     # Create directories for the tile
