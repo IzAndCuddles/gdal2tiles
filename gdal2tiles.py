@@ -2074,11 +2074,6 @@ def process_base_tile_job(out_data,tiledriver, options, resampling, tilebands, q
     ds=out_data.out_ds
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
     
-    # Create directories for the tile
-    # TODO ne pas creer les repertoires en //, les creer au debut
-    if not os.path.exists(os.path.dirname(tilefilename)):
-        os.makedirs(os.path.dirname(tilefilename))
-    
     rb,wb,querysize= tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tile.tsize,out_data.out_ds,tile.nativezoom)
 
     generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile)
@@ -2118,6 +2113,12 @@ def generate_base_tiles(config,profile,tile,out_data):
     #print tcount
     
     tz = tile.tmaxz
+    
+    # Create directories for the tiles
+    for tx in range(tminx,tmaxx+1):
+        tilefolder = os.path.join(config.output, str(tz), str(tx))
+        if not os.path.exists(tilefolder):
+            os.makedirs(tilefolder)
     
     ti=multiprocessing.Value('f',0.0)
     multiprocess = MultiProcess()
@@ -2200,10 +2201,6 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,o
 def process_overview_tile_job(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
     out_drv,mem_drv = init_drv(tiledriver)
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
-    # Create directories for the tile
-    # TODO ne pas creer les repertoires en //, les creer au debut
-    if not os.path.exists(os.path.dirname(tilefilename)):
-        os.makedirs(os.path.dirname(tilefilename))
     generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
 
 def generate_overview_tiles(config,profile,tile,out_data):
@@ -2212,6 +2209,14 @@ def generate_overview_tiles(config,profile,tile,out_data):
     print("Generating Overview Tiles:")
     
     tilebands = out_data.dataBandsCount + 1
+    
+    # Create directories for the tiles
+    for tz in range(tile.tmaxz-1,tile.tminz-1,-1):
+        tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
+        for tx in range(tminx,tmaxx+1):
+                tilefolder = os.path.join(config.output, str(tz), str(tx))
+                if not os.path.exists(tilefolder):
+                    os.makedirs(tilefolder)    
     
     # Usage of existing tiles: from 4 underlying tiles generate one as overview.
     
