@@ -2039,6 +2039,9 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
 
 def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile):
     if not (options.resume and os.path.exists(tilefilename)):
+        # Query is in 'nearest neighbour' but can be bigger in then the tilesize
+        # We scale down the query to the tilesize by supplied algorithm.
+        
         # Tile dataset in memory
         rx, ry, rxsize, rysize = rb
         wx, wy, wxsize, wysize = wb
@@ -2125,11 +2128,7 @@ def generate_base_tiles(config,profile,tile,out_data):
     multiprocess.processBase(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
         
-        #TODO : refaire methode stop
-    
-        # TODO remettre ce commentaire a sa place, avec le code concerne
-        # Query is in 'nearest neighbour' but can be bigger in then the tilesize
-        # We scale down the query to the tilesize by supplied algorithm.          
+        #TODO : refaire methode stop        
         lx=range(tminx,tmaxx+1)
         multiprocess.sendJob((config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic))                    
     multiprocess.finish(ti,tcount)
