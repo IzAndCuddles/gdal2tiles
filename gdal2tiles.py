@@ -410,7 +410,7 @@ class GlobalGeodetic(object):
         return (b[1],b[0],b[3],b[2])
 
 
-def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, i, n):
+def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, n):
 
     out_data = init_out_data(s_srs, input, profile, verbose, in_nodata)
     job = q.get()
@@ -445,14 +445,23 @@ class MultiProcess(object):
         self.q=multiprocessing.Queue()
         self.process=[]
     
-    def processBase(self, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
+    def processTile(self,num_process,target,args):
         for i in xrange(num_process):
-            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, i, n))
+            p = multiprocessing.Process(target=target, args=args)
+            p.daemon=True
+            p.start()
+            self.process.append(p)
+    
+    def processBase(self, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
+        #self.processTile(num_process,processBaseTileJobs,(self.q,s_srs,input,profile,verbose,in_nodata,n))
+        for i in xrange(num_process):
+            p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, n))
             p.daemon=True
             p.start()
             self.process.append(p)
             
     def processOverview(self, n, num_process=NB_PROCESS):
+        #self.processTile(num_process,processOverviewTileJobs,(self.q,n))
         for i in xrange(num_process):
             p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, n))
             p.daemon=True
@@ -475,18 +484,6 @@ class MultiProcess(object):
                     alive_count -= 1
                 progressbar(n.value/float(ncount))
             done = (alive_count == 0)
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class Profile(object):
