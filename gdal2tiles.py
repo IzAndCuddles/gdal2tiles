@@ -35,9 +35,13 @@
 #  DEALINGS IN THE SOFTWARE.
 #******************************************************************************
 
+# TODO essayer de mettre des docstring pour les fonctions / methodes / classes
+# TODO faire essais sur comportement en cas d'erreur pendant traitement d'un/plusieurs jobs
+# TODO supprimer tous nos TODO en francais
+
 import sys
 import multiprocessing
-from time import clock
+
 try:
     from osgeo import gdal
     from osgeo import osr
@@ -431,9 +435,7 @@ def processOverviewTileJobs(q,n):
         try:
             iterator = iter(lx)
         except TypeError:
-            tx=lx
-            lx=list()
-            lx.append(tx)
+            lx=[lx]
         for tx in lx:
             pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx)
             n.value += 1        # _not_ synchronized / not accurate but faster than proper lock
@@ -444,8 +446,9 @@ class MultiProcess(object):
     def __init__(self):
         self.q=multiprocessing.Queue()
         self.process=[]
+        # TODO mettre le num_process dans self.num_process
     
-    def processTile(self,num_process,target,args):
+    def _processTile(self,num_process,target,args):
         for i in xrange(num_process):
             p = multiprocessing.Process(target=target, args=args)
             p.daemon=True
@@ -453,7 +456,7 @@ class MultiProcess(object):
             self.process.append(p)
     
     def processBase(self, s_srs, input, profile, verbose, in_nodata, n, num_process=NB_PROCESS):
-        #self.processTile(num_process,processBaseTileJobs,(self.q,s_srs,input,profile,verbose,in_nodata,n))
+        #self._processTile(num_process,processBaseTileJobs,(self.q,s_srs,input,profile,verbose,in_nodata,n))
         for i in xrange(num_process):
             p = multiprocessing.Process(target=processBaseTileJobs, args=(self.q, s_srs, input, profile, verbose, in_nodata, n))
             p.daemon=True
@@ -461,7 +464,7 @@ class MultiProcess(object):
             self.process.append(p)
             
     def processOverview(self, n, num_process=NB_PROCESS):
-        #self.processTile(num_process,processOverviewTileJobs,(self.q,n))
+        #self._processTile(num_process,processOverviewTileJobs,(self.q,n))
         for i in xrange(num_process):
             p = multiprocessing.Process(target=processOverviewTileJobs, args=(self.q, n))
             p.daemon=True
@@ -475,6 +478,7 @@ class MultiProcess(object):
         for p in self.process:
             self.q.put('TERMINATE')
         done = False
+        # TODO commenter cette portion de code
         while not done:
             alive_count = len(self.process)
             for p in self.process:
@@ -2077,11 +2081,13 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
     
     
 def pickle_generate_base_tile(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
+    # TODO renommer cette fonction
     out_drv,mem_drv = init_drv(tiledriver)
     ds=out_data.out_ds
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
     
     # Create directories for the tile
+    # TODO ne pas creer les repertoires en //, les creer au debut
     if not os.path.exists(os.path.dirname(tilefilename)):
         os.makedirs(os.path.dirname(tilefilename))
     
@@ -2118,6 +2124,7 @@ def generate_base_tiles(config,profile,tile,out_data):
         print("dataBandsCount: ", out_data.dataBandsCount)
         print("tilebands: ", tilebands)
     
+    # TODO supprimer les print en commentaires
     #print tminx, tminy, tmaxx, tmaxy
     tcount = (1+abs(tmaxx-tminx)) * (1+abs(tmaxy-tminy))
     #print tcount
@@ -2131,6 +2138,7 @@ def generate_base_tiles(config,profile,tile,out_data):
         
         #TODO : refaire methode stop
     
+        # TODO remettre ce commentaire a sa place, avec le code concerne
         # Query is in 'nearest neighbour' but can be bigger in then the tilesize
         # We scale down the query to the tilesize by supplied algorithm.          
         lx=range(tminx,tmaxx+1)
@@ -2202,9 +2210,11 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,o
 
 
 def pickle_generate_overview_tile(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
+    # TODO renommer cette fonction (process_overview_tile_job ?)
     out_drv,mem_drv = init_drv(tiledriver)
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
     # Create directories for the tile
+    # TODO ne pas creer les repertoires en //, les creer au debut
     if not os.path.exists(os.path.dirname(tilefilename)):
         os.makedirs(os.path.dirname(tilefilename))
     generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
@@ -2223,6 +2233,7 @@ def generate_overview_tiles(config,profile,tile,out_data):
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         tcount += (1+abs(tmaxx-tminx)) * (1+abs(tmaxy-tminy))
 
+    # TODO renommer ti ou ajouter un commentaire sur son utilite
     ti = multiprocessing.Value('f',0.0)
     
     # querysize = TILESIZE * 2
@@ -2232,6 +2243,7 @@ def generate_overview_tiles(config,profile,tile,out_data):
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             
+            # TODO commenter le 'if'
             if tmaxy-tminy<NB_PROCESS:
             
                 for tx in range(tminx, tmaxx+1):
@@ -2261,17 +2273,12 @@ def process(config,tile):
     
     # Generation of main metadata files and HTML viewers
     generate_metadata(config,profile,tile,out_data)
-    
-    t0=clock()
+
     # Generation of the lowest tiles
     generate_base_tiles(config,profile,tile,out_data)
-    t1=clock()
-    print t1-t0
-    t0=clock()
+    
     # Generation of the overview tiles (higher in the pyramid)
     generate_overview_tiles(config,profile,tile,out_data)
-    t1=clock()
-    print t1-t0
 
 
 # =============================================================================
@@ -2282,7 +2289,4 @@ if __name__=='__main__':
     if argv:
         c1 = Configuration(argv[1:])
         tile=c1.create_tile()
-        t0=clock()
         process(c1,tile)
-        t1=clock()
-        print t1-t0
