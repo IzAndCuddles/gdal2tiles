@@ -467,8 +467,11 @@ class MultiProcess(object):
     def finish(self,n,ncount):
         for p in self.process:
             self.q.put('TERMINATE')
+        # In order to keep the progressbar as it was in the original version, we can't
+        # just join(0) the processes, or use a JoinableQueue : a timeout is needed.
+        # While all the processes aren't done, we join each process for 1 sec, than 
+        # call the progressbar.
         done = False
-        # TODO commenter cette portion de code
         while not done:
             alive_count = len(self.process)
             for p in self.process:
