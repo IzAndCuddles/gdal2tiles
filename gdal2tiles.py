@@ -690,11 +690,6 @@ class Configuration (object):
         self.input = None
         self.output = None
         
-        # Tile format
-        # TODO : Passer ces deux variables en options dans optparse_init
-        self.tiledriver = 'PNG'
-        self.tileext = 'png'
-        
         self.querysize_c = 4 * TILESIZE
         
         # RUN THE ARGUMENT PARSER:
@@ -705,6 +700,16 @@ class Configuration (object):
             error("No input file specified")
             
         # POSTPROCESSING OF PARSED ARGUMENTS:
+        
+        # Tile format
+        # TODO : Passer ces deux variables en options dans optparse_init
+        if not self.options.format:
+            self.tiledriver = 'PNG'
+            self.tileext = 'png'
+        else:
+            self.tiledriver = self.options.format
+            self.tileext = self.tiledriver.lower()
+        
         # Workaround for old versions of GDAL
         try:
             if (self.options.verbose and self.options.resampling == 'near') or gdal.TermProgress_nocb:
@@ -713,7 +718,6 @@ class Configuration (object):
             error("This version of GDAL is not supported. Please upgrade to 1.6+.")
         
         # Test output directory, if it doesn't exist
-        # TODO : Ajouter l'option du rep de destination
         if os.path.isdir(args[-1]) or ( len(args) > 1 and not os.path.exists(args[-1])):
             self.output = args[-1]
             args = args[:-1]
@@ -758,7 +762,6 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
             print("Cache: %s MB" % (gdal.GetCacheMax() / 1024 / 1024))
             print('')
             
-            
     def optparse_init(self):
         """Prepare the option parser for input (argv)"""
         # TODO : ajouter les options
@@ -781,6 +784,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
         p.add_option("-v", "--verbose",
                           action="store_true", dest="verbose",
                           help="Print status messages to stdout")
+        p.add_option('-f','--format', dest='format', type='string', help="Format of the tiles - default 'png', see available formats here : http://www.gdal.org/formats_list.html")
 
         # KML options 
         g = OptionGroup(p, "KML (Google Earth) options", "Options for generated Google Earth SuperOverlay metadata")
