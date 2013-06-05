@@ -518,10 +518,13 @@ class OutData(object):
         self.dataBandsCount=None
         self.out_gt=None
 
-# The following functions come directly from the GDAL2Tiles._init_ and 
+# The following functions come directly from the GDAL2Tiles.__init__ and 
 # GDAL2Tiles.open_input methods of the original version of GDAL2tiles.
 # To make the code easier to understand, and because of some unpickleable
-# elements, we created these new functions.
+# elements, we created these new functions. They are called in
+# Configuration.__init__ and Configuration.open_input, and during the
+# multiprocessing of the tiles, to create unpickleable elements needed to
+# create the tiles, from pickleable arguments.
 
 def def_in_srs(s_srs,input):
     in_ds=gdal.Open(input, gdal.GA_ReadOnly)
@@ -1997,6 +2000,7 @@ def scale_query_to_tile(options,tiledriver,resampling,dsquery, dstile, tilefilen
             error("ReprojectImage() failed on %s, error %d" % (tilefilename, res))
 
 def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodetic,tsize,out_ds,nativezoom):
+    "Considering the profile option, initialize the bounds for reading and writing the tile"
     if options.profile == 'mercator':
         # Tile bounds in EPSG:900913
         b = mercator.TileBounds(tx, ty, tz)
@@ -2038,6 +2042,7 @@ def tile_bounds(tmaxx, tmaxy, ds, querysize, tz, ty, tx,options,mercator,geodeti
     return rb, wb, querysize
 
 def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, wb, options, tiledriver, resampling, mem_drv, out_drv, out_data, tile):
+    "Create 1 base tile"
     if not (options.resume and os.path.exists(tilefilename)):
         # Query is in 'nearest neighbour' but can be bigger in then the tilesize
         # We scale down the query to the tilesize by supplied algorithm.
@@ -2073,6 +2078,7 @@ def generate_base_tile(ds, tilebands, querysize, tz, ty, tx, tilefilename, rb, w
     
     
 def process_base_tile_job(out_data,tiledriver, options, resampling, tilebands, querysize, tz, ty, tx, tile,output,tileext,tmaxx,tmaxy,mercator,geodetic):
+    "Create the drivers and the tile bounds, then generate the base tile"
     out_drv,mem_drv = init_drv(tiledriver)
     ds=out_data.out_ds
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
@@ -2144,11 +2150,13 @@ def generate_base_tiles(config,profile,tile,out_data):
 
 
 def read_tile(tz, output, tileext, y, x):
+    "Read a tile"
     dsquerytile = gdal.Open(os.path.join(output, str(tz + 1), str(x), "%s.%s" % (y, tileext)), gdal.GA_ReadOnly)
     tile_r = dsquerytile.ReadRaster(0, 0, TILESIZE, TILESIZE)
     return tile_r
 
 def init_children(tile,tz,ty,tx):
+    "Initialize a table for kml generation"
     children = []
     for y in range(2 * ty, 2 * ty + 2):
         for x in range(2 * tx, 2 * tx + 2):
@@ -2159,6 +2167,7 @@ def init_children(tile,tz,ty,tx):
 
 
 def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile):
+    "Generate 1 tile from 4 underlying tiles"
     if not (options.resume and os.path.exists(tilefilename)):
         dsquery = mem_drv.Create('', 2 * TILESIZE, 2 * TILESIZE, tilebands)
         # TODO: fill the null value
@@ -2197,6 +2206,7 @@ def generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,o
 
 
 def process_overview_tile_job(output,options,tiledriver,resampling,tileext, tile, tilebands, tz, ty, tx):
+    "Create the drivers and generate the overview tile"
     out_drv,mem_drv = init_drv(tiledriver)
     tilefilename = os.path.join(output, str(tz), str(tx), "%s.%s" % (ty, tileext))
     generate_overview_tile(tilebands, tz, ty, tx, tilefilename,mem_drv,out_drv,output,options,tiledriver,resampling,tileext,tile)
