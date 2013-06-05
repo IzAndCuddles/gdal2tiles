@@ -415,7 +415,7 @@ class GlobalGeodetic(object):
 
 
 def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, n):
-
+    "Create an only 'out_data' for the process that targets the function, then get jobs from the queue and create base tiles"
     out_data = init_out_data(s_srs, input, profile, verbose, in_nodata)
     job = q.get()
     
@@ -428,6 +428,7 @@ def processBaseTileJobs(q, s_srs, input, profile, verbose, in_nodata, n):
         job = q.get()
         
 def processOverviewTileJobs(q,n):
+    "Get jobs from the queue and create base tiles. Handle case were lx is a list, and when it is a value"
     job = q.get()
     
     while job !='TERMINATE':
@@ -442,13 +443,14 @@ def processOverviewTileJobs(q,n):
         job = q.get()
 
 class MultiProcess(object):
-    
+    "The MultiProcess class share a queue between a list of processes"
     def __init__(self,num_process=NB_PROCESS):
         self.q=multiprocessing.Queue()
         self.process=[]
         self.num_process = num_process
     
     def _processTile(self,target,args):
+        "Create processes and start them"
         for i in xrange(self.num_process):
             p = multiprocessing.Process(target=target, args=args)
             p.daemon=True
@@ -456,15 +458,19 @@ class MultiProcess(object):
             self.process.append(p)
     
     def processBase(self, s_srs, input, profile, verbose, in_nodata, n):
+        "Create processes which will create base tiles"
         self._processTile(processBaseTileJobs,(self.q,s_srs,input,profile,verbose,in_nodata,n))
             
     def processOverview(self, n):
+        "Create processes which will create overview tiles"
         self._processTile(processOverviewTileJobs,(self.q,n))
             
     def sendJob(self, job):
+        "Put a job to the queue"
         self.q.put(job)
 
     def finish(self,n,ncount):
+        "Finish all processes, and print the progressbar while waiting for all processes to join"
         for p in self.process:
             self.q.put('TERMINATE')
         # In order to keep the progressbar as it was in the original version, we can't
@@ -484,14 +490,14 @@ class MultiProcess(object):
 
 
 class Profile(object):
-    
+    "The Profile class gathers the profile-related variables"
     def __init__(self):
         self.mercator=GlobalMercator()
         self.geodetic=GlobalGeodetic()
         self.tileswne=None
 
 class Tile(object):
-    
+    "The Tile class gathers the tile-related variables"
     def __init__(self):
         self.tminz=None
         self.tmaxz=None
@@ -505,12 +511,17 @@ class Tile(object):
         
         
 class OutData(object):
-    
+    "The OutData class gathers the variables related to the output dataset"
     def __init__(self):
         self.out_ds=None
         self.alphaband=None
         self.dataBandsCount=None
         self.out_gt=None
+
+# The following functions come directly from the GDAL2Tiles._init_ and 
+# GDAL2Tiles.open_input methods of the original version of GDAL2tiles.
+# To make the code easier to understand, and because of some unpickleable
+# elements, we created these new functions.
 
 def def_in_srs(s_srs,input):
     in_ds=gdal.Open(input, gdal.GA_ReadOnly)
@@ -655,7 +666,8 @@ def image_warping(in_ds,in_srs_wkt,out_srs,verbose,in_nodata):
 
 
 class Configuration (object):
-
+    "The Configuration class gathers the option-related variables, and the methods initializing variables needed to create the tiles"
+    
     def create_tile(self):
         tile = Tile()
     # User specified zoom levels
@@ -672,7 +684,6 @@ class Configuration (object):
 
     def __init__(self,arguments):
         
-        # TODO : refaire methode stop
         self.input = None
         self.output = None
         
@@ -1006,8 +1017,6 @@ gdal2tiles temp.vrt""" % self.input )
             tmaxy = int(math.ceil(out_data.out_ds.RasterYSize / tsize)) - 1
             tile.tsize[tz] = math.ceil(tsize)
             tile.tminmax[tz] = tminx, tminy, tmaxx, tmaxy
-        
-
 
     def tile_range_geodetic(self,profile,out_data,tile):
     # from globalmaptiles.py
@@ -1032,8 +1041,6 @@ gdal2tiles temp.vrt""" % self.input )
         if self.options.verbose:
             print "Bounds (latlong):", tile.ominx, tile.ominy, tile.omaxx, tile.omaxy
 
-
-
     def tile_range_mercator(self,profile,out_data,tile):
     # from globalmaptiles.py
     # Function which generates SWNE in LatLong for given tile
@@ -1057,13 +1064,6 @@ gdal2tiles temp.vrt""" % self.input )
             print "Bounds (latlong):", profile.mercator.MetersToLatLon(tile.ominx, tile.ominy), profile.mercator.MetersToLatLon(tile.omaxx, tile.omaxy)
             print 'MinZoomLevel:', tile.tminz
             print "MaxZoomLevel:", tile.tmaxz, "(", profile.mercator.Resolution(tile.tmaxz), ")"
-
-
-
-
-
-
-
 
 # =============================================================================
 
@@ -2110,10 +2110,7 @@ def generate_base_tiles(config,profile,tile,out_data):
         print("dataBandsCount: ", out_data.dataBandsCount)
         print("tilebands: ", tilebands)
     
-    # TODO supprimer les print en commentaires
-    #print tminx, tminy, tmaxx, tmaxy
     tcount = (1+abs(tmaxx-tminx)) * (1+abs(tmaxy-tminy))
-    #print tcount
     
     tz = tile.tmaxz
     
@@ -2123,12 +2120,14 @@ def generate_base_tiles(config,profile,tile,out_data):
         if not os.path.exists(tilefolder):
             os.makedirs(tilefolder)
     
+    # To know were we stand in the creation of the tiles, we use a shared counter ti
+    # that all processes can modify.
     ti=multiprocessing.Value('f',0.0)
+    
     multiprocess = MultiProcess()
     multiprocess.processBase(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
-        
-        #TODO : refaire methode stop        
+               
         lx=range(tminx,tmaxx+1)
         multiprocess.sendJob((config.tiledriver, config.options, config.resampling, tilebands, querysize, tz, ty, lx, tile,config.output,config.tileext,tmaxx,tmaxy,profile.mercator,profile.geodetic))                    
     multiprocess.finish(ti,tcount)
@@ -2224,7 +2223,8 @@ def generate_overview_tiles(config,profile,tile,out_data):
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         tcount += (1+abs(tmaxx-tminx)) * (1+abs(tmaxy-tminy))
 
-    # TODO renommer ti ou ajouter un commentaire sur son utilite
+    # To know were we stand in the creation of the tiles, we use a shared counter ti
+    # that all processes can modify.
     ti = multiprocessing.Value('f',0.0)
     
     # querysize = TILESIZE * 2
@@ -2234,13 +2234,10 @@ def generate_overview_tiles(config,profile,tile,out_data):
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
             
-            # TODO commenter le 'if'
-            if tmaxy-tminy<NB_PROCESS:
-            
-                for tx in range(tminx, tmaxx+1):
-                    
-                    # TODO : refaire methode stop  
-                    
+            # If there is less jobs to calculate than processes, we send one tile per job.
+            # Else, we send a list of tiles in one job.
+            if tmaxy-tminy<NB_PROCESS:            
+                for tx in range(tminx, tmaxx+1):                    
                     multiprocess.sendJob((config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx))
             else:
                 lx=range(tminx,tmaxx+1)
