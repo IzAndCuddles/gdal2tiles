@@ -1479,7 +1479,7 @@ def generate_googlemaps(options,swne,tminz,tmaxz,tileext,kml):
                           mercator.fromPixelToLatLng( new GPoint( (tile.x+1)*256, (tile.y)*256 ) , zoom )
                       );
                       if (mapBounds.intersects(tileBounds)) {
-                          return zoom+"/"+tile.x+"/"+y+".png";
+                          return zoom+"/"+tile.x+"/"+y+"."""+tileext+"""";
                       } else {
                           return "http://www.maptiler.org/img/none.png";
                       }
@@ -1651,15 +1651,15 @@ def generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt):
             // create OSM/OAM layer
             var osm = new OpenLayers.Layer.TMS( "OpenStreetMap",
                 "http://tile.openstreetmap.org/",
-                { type: 'png', getURL: osm_getTileURL, displayOutsideMaxExtent: true, attribution: '<a href="http://www.openstreetmap.org/">OpenStreetMap</a>'} );
+                { type: '"""+tileext+"""', getURL: osm_getTileURL, displayOutsideMaxExtent: true, attribution: '<a href="http://www.openstreetmap.org/">OpenStreetMap</a>'} );
             var oam = new OpenLayers.Layer.TMS( "OpenAerialMap",
                 "http://tile.openaerialmap.org/tiles/1.0.0/openaerialmap-900913/",
-                { type: 'png', getURL: osm_getTileURL } );
+                { type: '"""+tileext+"""', getURL: osm_getTileURL } );
 
             // create TMS Overlay layer
             var tmsoverlay = new OpenLayers.Layer.TMS( "TMS Overlay", "",
                 {   // url: '', serviceVersion: '.', layername: '.',
-                    type: 'png', getURL: overlay_getTileURL, alpha: true, 
+                    type: '"""+tileext+"""', getURL: overlay_getTileURL, alpha: true, 
                     isBaseLayer: false
                 });
             if (OpenLayers.Util.alphaHack() == false) { tmsoverlay.setOpacity(0.7); }
@@ -1695,7 +1695,7 @@ def generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt):
             var tmsoverlay = new OpenLayers.Layer.TMS( "TMS Overlay", "",
                 {
                     serviceVersion: '.', layername: '.', alpha: true,
-                    type: 'png', getURL: overlay_getTileURL,
+                    type: '"""+tileext+"""', getURL: overlay_getTileURL,
                     isBaseLayer: false
                 });
             map.addLayer(tmsoverlay);
@@ -1720,7 +1720,7 @@ def generate_openlayers(options,swne,tminz,tmaxz,tileext,nativezoom,out_gt):
 
             var layer = new OpenLayers.Layer.TMS( "TMS Layer","",
                 {  url: '', serviceVersion: '.', layername: '.', alpha: true,
-                    type: 'png', getURL: overlay_getTileURL 
+                    type: '"""+tileext+"""', getURL: overlay_getTileURL 
                 });
             map.addLayer(layer);
             map.zoomToExtent( mapBounds );  
