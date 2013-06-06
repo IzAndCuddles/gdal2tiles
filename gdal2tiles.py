@@ -710,6 +710,15 @@ class Configuration (object):
             self.tiledriver = self.options.format
             self.tileext = self.tiledriver.lower()
         
+        # Number of processes
+        if not self.options.nb_process:
+            self.nb_process=NB_PROCESS
+        elif self.options.nb_process>0:
+            self.nb_process=self.options.nb_process
+        elif self.options.nb_process<=0 and (-1)*self.options.nb_process<NB_PROCESS:
+            self.nb_process=NB_PROCESS+self.options.nb_process
+        else:
+            error("The number of processes is less than 0, please give a value bigger than -%i" % NB_PROCESS )
         # Workaround for old versions of GDAL
         try:
             if (self.options.verbose and self.options.resampling == 'near') or gdal.TermProgress_nocb:
@@ -785,7 +794,8 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
                           action="store_true", dest="verbose",
                           help="Print status messages to stdout")
         p.add_option('-f','--format', dest='format', type='string', help="Format of the tiles - default 'png', see available formats here : http://www.gdal.org/formats_list.html")
-
+        p.add_option('-b','--nb_process', dest ='nb_process',type='int', help="The number of processes that will be running - default : the number of cores in the computer")
+        
         # KML options 
         g = OptionGroup(p, "KML (Google Earth) options", "Options for generated Google Earth SuperOverlay metadata")
         g.add_option("-k", "--force-kml", dest='kml', action="store_true",
@@ -2134,7 +2144,7 @@ def generate_base_tiles(config,profile,tile,out_data):
     # that all processes can modify.
     ti=multiprocessing.Value('f',0.0)
     
-    multiprocess = MultiProcess()
+    multiprocess = MultiProcess(config.nb_process)
     multiprocess.processBase(config.options.s_srs, config.input, config.options.profile, config.options.verbose, config.in_nodata,ti)
     for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
                
@@ -2243,7 +2253,7 @@ def generate_overview_tiles(config,profile,tile,out_data):
     
     # querysize = TILESIZE * 2
     for tz in range(tile.tmaxz-1, tile.tminz-1, -1):
-        multiprocess=MultiProcess()
+        multiprocess=MultiProcess(config.nb_process)
         multiprocess.processOverview(ti)
         tminx, tminy, tmaxx, tmaxy = tile.tminmax[tz]
         for ty in range(tmaxy, tminy-1, -1): #range(tminy, tmaxy+1):
