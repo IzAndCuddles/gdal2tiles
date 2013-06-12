@@ -105,7 +105,6 @@ Class is available under the open-source GDAL license (www.gdal.org).
 
 MAXZOOMLEVEL = 32
 TILESIZE = 256
-NB_PROCESS=multiprocessing.cpu_count()
 
 
 class GlobalMercator(object):
@@ -444,7 +443,7 @@ def processOverviewTileJobs(q,n):
 
 class MultiProcess(object):
     "The MultiProcess class share a queue between a list of processes"
-    def __init__(self,num_process=NB_PROCESS):
+    def __init__(self,num_process):
         self.q=multiprocessing.Queue()
         self.process=[]
         self.num_process = num_process
@@ -711,14 +710,12 @@ class Configuration (object):
             self.tileext = self.tiledriver.lower()
         
         # Number of processes
-        if not self.options.nb_process:
-            self.nb_process=NB_PROCESS
-        elif self.options.nb_process>0:
-            self.nb_process=self.options.nb_process
-        elif self.options.nb_process<=0 and (-1)*self.options.nb_process<NB_PROCESS:
-            self.nb_process=NB_PROCESS+self.options.nb_process
-        else:
-            error("The number of processes is less than 0, please give a value bigger than -%i" % NB_PROCESS )
+        nb_process = self.options.nb_process
+        num_cpus = multiprocessing.cpu_count()
+        if nb_process<=0:
+            nb_process=max(1, num_cpus+nb_process)
+        self.nb_process = nb_process
+        
         # Workaround for old versions of GDAL
         try:
             if (self.options.verbose and self.options.resampling == 'near') or gdal.TermProgress_nocb:
@@ -794,7 +791,7 @@ gdal_vrtmerge.py -o merged.vrt %s""" % " ".join(args))
                           action="store_true", dest="verbose",
                           help="Print status messages to stdout")
         p.add_option('-f','--format', dest='format', type='string', help="Format of the tiles - default 'png', see available formats here : http://www.gdal.org/formats_list.html")
-        p.add_option('-b','--nb_process', dest ='nb_process',type='int', help="The number of processes that will be running - default : the number of cores in the computer")
+        p.add_option('-b','--nb_process', dest ='nb_process',type='int', default=0, help="The number of processes that will be running - default : the number of cores in the computer")
         
         # KML options 
         g = OptionGroup(p, "KML (Google Earth) options", "Options for generated Google Earth SuperOverlay metadata")
@@ -2260,7 +2257,7 @@ def generate_overview_tiles(config,profile,tile,out_data):
             
             # If there is less jobs to calculate than processes, we send one tile per job.
             # Else, we send a list of tiles in one job.
-            if tmaxy-tminy<NB_PROCESS:            
+            if tmaxy-tminy<config.nb_process:            
                 for tx in range(tminx, tmaxx+1):                    
                     multiprocess.sendJob((config.output, config.options, config.tiledriver, config.resampling, config.tileext, tile, tilebands, tz, ty, tx))
             else:
